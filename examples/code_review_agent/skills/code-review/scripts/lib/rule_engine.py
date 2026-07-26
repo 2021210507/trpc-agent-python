@@ -10,15 +10,81 @@
 
 from __future__ import annotations
 
+import io
+import tokenize
 from dataclasses import dataclass
-from typing import Protocol, Sequence, Tuple
+from typing import List, Protocol, Sequence, Tuple
 
-from .diff_parser import ChangeSet
+from .diff_parser import ChangeSet, Hunk
 from .secret_rules import detect_change_set_secrets
 
 
 _SEVERITIES = frozenset({"critical", "high", "medium", "low", "info"})
 _SOURCES = frozenset({"rule-engine", "ast", "heuristic"})
+
+
+def mask_non_code_line(line: str) -> Tuple[str, Tuple[str, ...]]:
+    """Mask comments and ordinary strings while retaining f-string tokens."""
+
+    masked = list(line)
+    f_strings: List[str] = []
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(f"{line}\n").readline)
+        for token in tokens:
+            if token.type == tokenize.COMMENT:
+                start, end = token.start[1], token.end[1]
+                masked[start:end] = " " * (end - start)
+            elif token.type == tokenize.STRING:
+                start, end = token.start[1], token.end[1]
+                masked[start:end] = " " * (end - start)
+                if token.string.lower().lstrip("rub").startswith("f"):
+                    f_strings.append(token.string)
+    except (tokenize.TokenError, IndentationError):
+        comment_index = line.find("#")
+        if comment_index >= 0:
+            masked[comment_index:] = " " * (len(line) - comment_index)
+    return "".join(masked), tuple(f_strings)
+
+
+def advance_triple_quote_state(
+    line: str,
+    active_delimiter: str | None,
+) -> Tuple[str | None, bool]:
+    """Suppress whole lines belonging to a triple-quoted string/docstring."""
+
+    if active_delimiter is not None:
+        return (
+            (None if active_delimiter in line else active_delimiter),
+            True,
+        )
+    if line.lstrip().startswith("#"):
+        return None, False
+    for delimiter in ('"""', "'''"):
+        start = line.find(delimiter)
+        if start < 0:
+            continue
+        end = line.find(delimiter, start + len(delimiter))
+        return (None if end >= 0 else delimiter), True
+    return None, False
+
+
+def hunk_new_side_lines(hunk: Hunk) -> Tuple[Tuple[int, str, bool], ...]:
+    """Return ordered new-side hunk lines as (line, text, is_added)."""
+
+    lines = {
+        line_number: (line_text, False)
+        for line_number, line_text in hunk.context_lines.items()
+    }
+    lines.update(
+        {
+            line_number: (line_text, True)
+            for line_number, line_text in hunk.added_lines.items()
+        }
+    )
+    return tuple(
+        (line_number, line_text, is_added)
+        for line_number, (line_text, is_added) in sorted(lines.items())
+    )
 
 
 @dataclass(frozen=True)

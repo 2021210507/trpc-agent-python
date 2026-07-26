@@ -20,6 +20,8 @@ sys.path.insert(0, str(SCRIPTS_ROOT))
 
 from lib.diff_parser import parse_unified_diff  # noqa: E402
 from lib.rule_engine import RuleEngine  # noqa: E402
+from lib.rules_async import default_async_rules  # noqa: E402
+from lib.rules_resource import default_resource_rules  # noqa: E402
 from lib.rules_security import default_security_rules  # noqa: E402
 
 
@@ -37,6 +39,12 @@ def _added_python_change_set(*lines: str):
 
 def _engine() -> RuleEngine:
     return RuleEngine(default_security_rules())
+
+
+def _full_engine() -> RuleEngine:
+    return RuleEngine(
+        (*default_security_rules(), *default_async_rules(), *default_resource_rules())
+    )
 
 
 def test_security_rules_expose_protocol_metadata_and_detect_dangerous_code() -> None:
@@ -117,3 +125,115 @@ def test_secret_rule_scans_real_format_string_literals_without_structure_filter(
     assert matches[0].line == 1
     assert token not in matches[0].evidence
     assert "[REDACTED:github_token]" in matches[0].evidence
+
+
+def test_async_rules_detect_blocking_and_unawaited_coroutines() -> None:
+    change_set = _added_python_change_set(
+        "async def fetch_data():",
+        "    return 1",
+        "async def handler():",
+        "    time.sleep(1)",
+        "    fetch_data()",
+        "    asyncio.sleep(1)",
+    )
+
+    matches = _full_engine().match(change_set)
+
+    assert [(match.rule_id, match.line) for match in matches] == [
+        ("async.blocking-time-sleep", 4),
+        ("async.unawaited-coroutine", 5),
+        ("async.unawaited-coroutine", 6),
+    ]
+    assert all(match.category == "async-errors" for match in matches)
+    assert all(0.60 <= match.confidence <= 0.90 for match in matches)
+
+
+def test_async_rules_ignore_awaited_and_sync_uses() -> None:
+    change_set = _added_python_change_set(
+        "def sync_handler():",
+        "    time.sleep(1)",
+        "async def fetch_data():",
+        "    return 1",
+        "async def handler():",
+        "    await fetch_data()",
+        "    await asyncio.sleep(1)",
+    )
+
+    assert not [match for match in _full_engine().match(change_set) if match.category == "async-errors"]
+
+
+def test_async_rules_use_hunk_context_to_identify_async_scope() -> None:
+    diff = "\n".join(
+        [
+            "diff --git a/src/example.py b/src/example.py",
+            "--- a/src/example.py",
+            "+++ b/src/example.py",
+            "@@ -1,2 +1,3 @@",
+            " async def handler():",
+            "+    time.sleep(1)",
+            "     return None",
+        ]
+    )
+
+    matches = _full_engine().match(parse_unified_diff(diff))
+
+    assert [(match.rule_id, match.line) for match in matches] == [
+        ("async.blocking-time-sleep", 2),
+    ]
+
+
+def test_resource_rules_detect_unclosed_open_and_client_session_across_hunk_lines() -> None:
+    change_set = _added_python_change_set(
+        "def read(path):",
+        "    handle = open(path)",
+        "    return handle.read()",
+        "async def request():",
+        "    session = aiohttp.ClientSession()",
+        "    return await session.get(url)",
+    )
+
+    matches = _full_engine().match(change_set)
+
+    assert [(match.rule_id, match.line) for match in matches] == [
+        ("resource.open-without-close", 2),
+        ("resource.client-session-without-close", 5),
+    ]
+    assert all(match.category == "resource-leak" for match in matches)
+
+
+def test_resource_rules_ignore_context_managed_and_closed_resources() -> None:
+    change_set = _added_python_change_set(
+        "def read(path):",
+        "    with open(path) as handle:",
+        "        return handle.read()",
+        "def write(path):",
+        "    handle = open(path)",
+        "    handle.close()",
+        "async def request():",
+        "    async with aiohttp.ClientSession() as session:",
+        "        return await session.get(url)",
+        "async def request_with_close():",
+        "    session = aiohttp.ClientSession()",
+        "    await session.close()",
+    )
+
+    assert not [match for match in _full_engine().match(change_set) if match.category == "resource-leak"]
+
+
+def test_resource_rules_use_hunk_context_for_lifecycle_evidence() -> None:
+    diff = "\n".join(
+        [
+            "diff --git a/src/example.py b/src/example.py",
+            "--- a/src/example.py",
+            "+++ b/src/example.py",
+            "@@ -1,3 +1,4 @@",
+            " def read(path):",
+            "+    handle = open(path)",
+            "     handle.read()",
+            "     handle.close()",
+        ]
+    )
+
+    matches = _full_engine().match(parse_unified_diff(diff))
+
+    assert not [match for match in matches if match.category == "resource-leak"]
