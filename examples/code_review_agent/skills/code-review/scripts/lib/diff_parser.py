@@ -231,14 +231,17 @@ def _reconstruct_added_file(
     return full_text
 
 
-def _analysis_mode(path: str, full_text: str | None) -> str:
+def _analysis_mode(path: str, full_text: str | None) -> Tuple[str, str | None]:
+    """Return the safe analysis mode and an optional sanitized parse warning."""
+
     if full_text is None or not path.endswith(".py"):
-        return "diff_heuristic"
+        return "diff_heuristic", None
     try:
         ast.parse(full_text)
     except SyntaxError:
-        return "diff_heuristic"
-    return "ast_validated"
+        # Never expose a parser exception because it can include source text.
+        return "diff_heuristic", f"ast_parse_failed:{path}"
+    return "ast_validated", None
 
 
 def build_snapshot_change_set(
@@ -263,6 +266,7 @@ def build_snapshot_change_set(
     hasher = hashlib.sha256()
     hasher.update(b"code-review-snapshot-v1\0")
     files: List[FileChange] = []
+    parse_warnings: List[str] = []
     for normalized_path in sorted(normalized_files):
         full_text = normalized_files[normalized_path]
         path_bytes = normalized_path.encode("utf-8")
@@ -291,6 +295,9 @@ def build_snapshot_change_set(
         else:
             hunks = ()
 
+        analysis_mode, parse_warning = _analysis_mode(normalized_path, full_text)
+        if parse_warning is not None:
+            parse_warnings.append(parse_warning)
         files.append(
             FileChange(
                 old_path="/dev/null",
@@ -303,7 +310,7 @@ def build_snapshot_change_set(
                 old_changed_lines=(),
                 new_changed_lines=tuple(range(1, len(text_lines) + 1)),
                 full_text=full_text,
-                analysis_mode=_analysis_mode(normalized_path, full_text),
+                analysis_mode=analysis_mode,
             )
         )
 
@@ -317,7 +324,7 @@ def build_snapshot_change_set(
             len(file_change.new_changed_lines) for file_change in files
         ),
         deletions=0,
-        parse_warnings=(),
+        parse_warnings=tuple(parse_warnings),
     )
 
 
@@ -333,6 +340,7 @@ def parse_unified_diff(
     input_sha256 = hashlib.sha256(diff_text.encode("utf-8")).hexdigest()
     lines = diff_text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
     files: List[FileChange] = []
+    parse_warnings: List[str] = []
     index = 0
 
     while index < len(lines):
@@ -433,7 +441,9 @@ def parse_unified_diff(
             analysis_mode = "skipped"
         elif status == "added" and full_text is not None:
             review_scope = "full_file"
-            analysis_mode = _analysis_mode(normalized_path, full_text)
+            analysis_mode, parse_warning = _analysis_mode(normalized_path, full_text)
+            if parse_warning is not None:
+                parse_warnings.append(parse_warning)
         else:
             review_scope = (
                 "deleted_lines" if status == "deleted" else "changed_lines"
@@ -471,5 +481,5 @@ def parse_unified_diff(
             for file_change in files
             for hunk in file_change.hunks
         ),
-        parse_warnings=(),
+        parse_warnings=tuple(parse_warnings),
     )
