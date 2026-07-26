@@ -18,11 +18,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_ROOT = PROJECT_ROOT / "skills" / "code-review" / "scripts"
 sys.path.insert(0, str(SCRIPTS_ROOT))
 
-from lib.diff_parser import parse_unified_diff  # noqa: E402
+from lib.diff_parser import build_snapshot_change_set, parse_unified_diff  # noqa: E402
 from lib.rule_engine import RuleEngine  # noqa: E402
 from lib.rules_async import default_async_rules  # noqa: E402
+from lib.rules_db import default_db_rules  # noqa: E402
 from lib.rules_resource import default_resource_rules  # noqa: E402
 from lib.rules_security import default_security_rules  # noqa: E402
+from lib.rules_tests import default_test_rules  # noqa: E402
 
 
 def _added_python_change_set(*lines: str):
@@ -43,7 +45,23 @@ def _engine() -> RuleEngine:
 
 def _full_engine() -> RuleEngine:
     return RuleEngine(
-        (*default_security_rules(), *default_async_rules(), *default_resource_rules())
+        (
+            *default_security_rules(),
+            *default_async_rules(),
+            *default_resource_rules(),
+        )
+    )
+
+
+def _a6_engine() -> RuleEngine:
+    return RuleEngine(
+        (
+            *default_security_rules(),
+            *default_async_rules(),
+            *default_resource_rules(),
+            *default_db_rules(),
+            *default_test_rules(),
+        )
     )
 
 
@@ -237,3 +255,78 @@ def test_resource_rules_use_hunk_context_for_lifecycle_evidence() -> None:
     matches = _full_engine().match(parse_unified_diff(diff))
 
     assert not [match for match in matches if match.category == "resource-leak"]
+
+
+def test_db_rules_detect_unclosed_connection_and_unfinalized_transaction() -> None:
+    change_set = _added_python_change_set(
+        "connection = sqlite3.connect(database_path)",
+        "transaction = connection.begin()",
+        "transaction.execute(statement)",
+    )
+
+    matches = _a6_engine().match(change_set)
+
+    assert [(match.rule_id, match.line) for match in matches] == [
+        ("db.connection-without-close", 1),
+        ("tests.missing-coverage", 1),
+        ("db.transaction-without-finalize", 2),
+    ]
+    db_matches = [match for match in matches if match.category == "db-lifecycle"]
+    assert all(0.60 <= match.confidence <= 0.90 for match in db_matches)
+
+
+def test_db_rules_ignore_close_commit_and_rollback() -> None:
+    change_set = _added_python_change_set(
+        "connection = sqlite3.connect(database_path)",
+        "transaction = connection.begin()",
+        "transaction.commit()",
+        "connection.close()",
+        "other_transaction = connection.begin()",
+        "other_transaction.rollback()",
+    )
+
+    assert not [match for match in _a6_engine().match(change_set) if match.category == "db-lifecycle"]
+
+
+def test_db_rules_use_hunk_context_for_close_and_commit_evidence() -> None:
+    diff = "\n".join(
+        [
+            "diff --git a/src/example.py b/src/example.py",
+            "--- a/src/example.py",
+            "+++ b/src/example.py",
+            "@@ -1,3 +1,5 @@",
+            " def write():",
+            "+    connection = sqlite3.connect(database_path)",
+            "+    transaction = connection.begin()",
+            "     transaction.commit()",
+            "     connection.close()",
+        ]
+    )
+
+    assert not [match for match in _a6_engine().match(parse_unified_diff(diff)) if match.category == "db-lifecycle"]
+
+
+def test_missing_tests_is_low_confidence_change_set_heuristic() -> None:
+    change_set = build_snapshot_change_set(
+        {"src/service.py": "def calculate(value):\n    return value + 1\n"}
+    )
+
+    matches = _a6_engine().match(change_set)
+
+    assert len(matches) == 1
+    match = matches[0]
+    assert match.rule_id == "tests.missing-coverage"
+    assert match.category == "missing-tests"
+    assert 0.50 <= match.confidence < 0.80
+    assert match.line == 1
+
+
+def test_missing_tests_is_not_reported_when_a_test_file_changes() -> None:
+    change_set = build_snapshot_change_set(
+        {
+            "src/service.py": "def calculate(value):\n    return value + 1\n",
+            "tests/test_service.py": "def test_calculate():\n    assert True\n",
+        }
+    )
+
+    assert not [match for match in _a6_engine().match(change_set) if match.category == "missing-tests"]
