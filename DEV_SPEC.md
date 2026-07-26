@@ -615,7 +615,7 @@ examples/code_review_agent/
 | A6 | DB 生命周期 + 测试缺失规则（rules_db.py + rules_tests.py） | [x] | 2026-07-26 | 连接未关/事务未 commit 可检出；missing-tests 为变更集级启发式，置信度锁 0.5–0.8 | tests/unit/test_rules.py 扩展：missing-tests 断言 confidence<0.8 恒成立 |
 | A7 | AST 增强层（requires_full_file + review_scope 约束） | [x] | 2026-07-26 | changed_lines scope 只报 AST 节点与新变更行相交的问题；full_file scope 明确扫描全文；deleted_lines 不跑普通 AST；纯残缺 diff 不 ast.parse；失败降级 + warning | tests/unit/test_rules_ast.py：增量模式历史问题不报、snapshot 模式同一问题可报、变更行命中、新增文件 AST、删除/残缺/语法错误稳定处理 |
 | A8 | 输入层与安全 staging（codereview/inputs.py） | [x] | 2026-07-26 | 四种输入互斥并统一产出 ChangeSet；`--files` 固定 snapshot/full_file，fixture 保留 diff/full-file 载荷类型，repo untracked 为 added/full_file；Git argv 禁 shell；realpath、symlink/junction 和输入总量在 staging 前检查；原始内容仅留受控任务域 | tests/integration/test_inputs.py：四输入与 scope/status；fixture diff hunk 不被改写；.env 检出、忽略目录/二进制；路径/超限拒绝；日志无原始密钥 |
-| A9 | CR Skill、执行 manifest 与沙箱入口 | [ ] | | SKILL.md frontmatter 合规；6 篇规则文档声明能力/盲区；security-boundaries.md 完整；manifest 声明 script_id/entrypoint/hash/参数/预算/网络；run_checks.py 读输入输出已脱敏 findings.json | tests/integration/test_skill_scripts.py：manifest schema/摘要校验；subprocess 直跑注册脚本；findings 9 字段且输出无明文 |
+| A9 | CR Skill、执行 manifest 与沙箱入口 | [x] | 2026-07-26 | SKILL.md frontmatter 合规；6 篇规则文档声明能力/盲区；security-boundaries.md 完整；manifest 声明 script_id/entrypoint/hash/参数/预算/网络；run_checks.py 读输入输出已脱敏 findings.json | tests/integration/test_skill_scripts.py：manifest schema/摘要校验；subprocess 直跑注册脚本；findings 9 字段且输出无明文 |
 
 #### 阶段 B：落库闭环
 

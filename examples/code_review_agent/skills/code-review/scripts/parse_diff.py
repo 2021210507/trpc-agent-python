@@ -6,4 +6,73 @@
 # trpc-agent-python is licensed under the Apache License Version 2.0.
 #
 
-"""Sandbox entry point for diff parsing."""
+"""Sandbox entry point that emits a non-sensitive unified-diff summary."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any, Dict
+
+from lib.diff_parser import ChangeSet, parse_unified_diff
+
+
+_INPUT_PATH = Path("work") / "inputs" / "diff.json"
+_OUTPUT_PATH = Path("out") / "parsed.json"
+
+
+def _load_change_set(input_path: Path) -> ChangeSet:
+    """Load the constrained diff payload without printing its contents."""
+
+    payload = json.loads(input_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("input payload must be an object")
+    source_kind = payload.get("source_kind", "diff_file")
+    diff_text = payload.get("diff")
+    if source_kind not in {"diff_file", "repo_path", "fixture"}:
+        raise ValueError("input source_kind must describe a diff")
+    if not isinstance(diff_text, str):
+        raise ValueError("input diff must be a string")
+    return parse_unified_diff(diff_text, source_kind=source_kind)
+
+
+def _summary(change_set: ChangeSet) -> Dict[str, Any]:
+    """Return metadata only; raw code and hunk contents cannot leave the sandbox."""
+
+    return {
+        "schema_version": "1.0.0",
+        "source_kind": change_set.source_kind,
+        "input_sha256": change_set.input_sha256,
+        "file_count": change_set.file_count,
+        "hunk_count": change_set.hunk_count,
+        "additions": change_set.additions,
+        "deletions": change_set.deletions,
+        "parse_warning_count": len(change_set.parse_warnings),
+        "files": [
+            {
+                "path": file_change.normalized_path,
+                "status": file_change.status,
+                "review_scope": file_change.review_scope,
+                "is_binary": file_change.is_binary,
+                "analysis_mode": file_change.analysis_mode,
+                "hunk_count": len(file_change.hunks),
+            }
+            for file_change in change_set.files
+        ],
+    }
+
+
+def main() -> int:
+    """Read the fixed workspace input and write one canonical summary."""
+
+    change_set = _load_change_set(_INPUT_PATH)
+    _OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _OUTPUT_PATH.write_text(
+        json.dumps(_summary(change_set), ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,4 +1,32 @@
 {
   "schema_version": "1.0.0",
-  "scripts": []
+  "skill_name": "code-review",
+  "scripts": [
+    {
+      "script_id": "parse_diff",
+      "entrypoint": "parse_diff.py",
+      "sha256": "f886459e4ac4ddf866a57ca0ff955e4229b82e9141ed546e6b1b7e545e6e5fd2",
+      "arguments": {
+        "type": "object",
+        "additional_properties": false,
+        "properties": {}
+      },
+      "timeout_seconds": 30,
+      "max_output_bytes": 1048576,
+      "requires_network": false
+    },
+    {
+      "script_id": "run_checks",
+      "entrypoint": "run_checks.py",
+      "sha256": "b4cfe1035a6a33d8deeefbc30828a2aafa8882ab981a3ea156a77e42e86595f5",
+      "arguments": {
+        "type": "object",
+        "additional_properties": false,
+        "properties": {}
+      },
+      "timeout_seconds": 30,
+      "max_output_bytes": 1048576,
+      "requires_network": false
+    }
+  ]
 }
