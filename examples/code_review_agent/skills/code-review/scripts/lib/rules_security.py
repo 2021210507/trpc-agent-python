@@ -31,9 +31,15 @@ _INTERPOLATION = re.compile(r"\{[^{}]+\}")
 _SHELL_TRUE = re.compile(
     r"\bsubprocess\.(?:run|call|check_call|check_output|Popen)\s*\([^\n]*\bshell\s*=\s*True\b"
 )
-_DYNAMIC_EVAL = re.compile(r"(?<![.\w])eval\s*\(")
+_DYNAMIC_EVAL = re.compile(
+    r"(?:\bbuiltins\.eval|(?<![.\w])eval)\s*\("
+)
 _DYNAMIC_EXEC = re.compile(r"(?<![.\w])exec\s*\(")
 _OS_SYSTEM = re.compile(r"\bos\.system\s*\(")
+_OS_POPEN = re.compile(r"\bos\.popen\s*\(")
+_SUBPROCESS_SHELL_COMMAND = re.compile(
+    r"\bsubprocess\.(?:getoutput|getstatusoutput)\s*\("
+)
 
 
 @dataclass(frozen=True)
@@ -102,6 +108,8 @@ def _shell_true(code: str, _f_strings: Tuple[str, ...]) -> bool:
 
 
 def _dynamic_eval(code: str, _f_strings: Tuple[str, ...]) -> bool:
+    """判断代码行是否直接调用内置或限定名 eval。"""
+
     return bool(_DYNAMIC_EVAL.search(code))
 
 
@@ -113,8 +121,23 @@ def _os_system(code: str, _f_strings: Tuple[str, ...]) -> bool:
     return bool(_OS_SYSTEM.search(code))
 
 
+def _os_popen(code: str, _f_strings: Tuple[str, ...]) -> bool:
+    """判断代码行是否调用隐式经过 shell 的 os.popen。"""
+
+    return bool(_OS_POPEN.search(code))
+
+
+def _subprocess_shell_command(
+    code: str,
+    _f_strings: Tuple[str, ...],
+) -> bool:
+    """判断代码行是否调用 subprocess 的隐式 shell 辅助函数。"""
+
+    return bool(_SUBPROCESS_SHELL_COMMAND.search(code))
+
+
 def default_security_rules() -> Tuple[ReviewRule, ...]:
-    """Return the A4 rule pack in deterministic execution order."""
+    """按确定性顺序返回 A4 安全规则包。"""
 
     return (
         SecurityRule(
@@ -156,6 +179,25 @@ def default_security_rules() -> Tuple[ReviewRule, ...]:
             title="os.system invokes a shell command",
             recommendation="Use subprocess with shell disabled and a validated argument list.",
             detector=_os_system,
+        ),
+        SecurityRule(
+            rule_id="security.os-popen",
+            severity="high",
+            confidence=0.85,
+            title="os.popen invokes a shell command",
+            recommendation="Use subprocess with shell disabled and a validated argument list.",
+            detector=_os_popen,
+        ),
+        SecurityRule(
+            rule_id="security.subprocess-shell-command",
+            severity="high",
+            confidence=0.85,
+            title="subprocess helper executes through a shell",
+            recommendation=(
+                "Use subprocess with shell disabled, pass an argument list, "
+                "and validate all command inputs."
+            ),
+            detector=_subprocess_shell_command,
         ),
         SecretRule(),
     )

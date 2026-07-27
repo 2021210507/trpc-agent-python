@@ -131,6 +131,42 @@ def test_security_rules_only_report_new_changed_lines() -> None:
     assert _engine().match(parse_unified_diff(diff)) == ()
 
 
+def test_security_heuristics_detect_qualified_shell_and_eval_variants() -> None:
+    """验证纯 diff 行级规则识别可由限定名直接确认的危险调用。"""
+
+    change_set = _added_python_change_set(
+        "import builtins",
+        "import os",
+        "import subprocess",
+        "builtins.eval(payload)",
+        "os.popen(command)",
+        "subprocess.getoutput(command)",
+        "subprocess.getstatusoutput(command)",
+    )
+
+    matches = _engine().match(change_set)
+
+    assert [(match.rule_id, match.line) for match in matches] == [
+        ("security.dynamic-eval", 4),
+        ("security.os-popen", 5),
+        ("security.subprocess-shell-command", 6),
+        ("security.subprocess-shell-command", 7),
+    ]
+
+
+def test_security_heuristic_variants_ignore_literals_and_custom_objects() -> None:
+    """验证新增限定名规则忽略注释、普通字符串和自定义对象方法。"""
+
+    change_set = _added_python_change_set(
+        "# builtins.eval(payload); os.popen(command)",
+        'description = "subprocess.getoutput(command)"',
+        "client.getoutput(command)",
+        "platform.popen(command)",
+    )
+
+    assert _engine().match(change_set) == ()
+
+
 def test_secret_rule_scans_real_format_string_literals_without_structure_filter() -> None:
     token = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789"
     change_set = _added_python_change_set(f"GITHUB_TOKEN = '{token}'")

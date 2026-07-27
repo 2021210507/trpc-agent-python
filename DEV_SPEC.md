@@ -131,7 +131,7 @@ diff 解析必须覆盖边界：rename、binary、CRLF、`\ No newline at end of
 | resource-leak | 较强：AST 可识别 open/connect 后无 close/with 的经典模式 | 跨函数传递的句柄、仅异常路径泄漏（需控制流分析） |
 | db-lifecycle | 较强：识别已知 DB 库 API（connect/commit/rollback）调用模式 | 连接池误用、嵌套事务（需调用上下文理解） |
 | async-errors | 中等：AST 可查协程创建后未 await/未传 gather/create_task 的直接模式 | 变量先赋值、之后才 await（需数据流分析） |
-| security | 中等：已知危险 API（eval/exec/pickle.loads/os.system/SQL 拼接）模式 | 业务逻辑漏洞（权限绕过、认证逻辑错误，需理解代码意图） |
+| security | 中等：已知危险 API（直接/限定名 eval/exec、os.system/popen、subprocess shell helper、SQL f-string/拼接/format/%）模式 | 运行时函数别名、变量传播得到的 shell 参数、动态属性名和业务逻辑漏洞（权限绕过、认证逻辑错误） |
 
 **盲区处理原则**：规则覆盖不到的场景保持为声明盲区，本期不用 LLM 顶上。理由：一旦 LLM 参与检出判断，检出率/误报率（AC2）无法稳定复现。盲区清单写入各规则文档和 README；CI 硬门禁语料只覆盖明确声明支持的模式，另设 blind-spot stress corpus 作为观测项，记录漏检但不冒充正式门禁通过。P/R/F1 只统计 findings 桶。
 
@@ -610,7 +610,7 @@ examples/code_review_agent/
 | A1 | 目录骨架 + ReviewConfig + schema + 分层 pytest 基座 | [x] | 2026-07-24 | 5.2 目录树全部空模块就位；tests/unit、integration、e2e、fixtures、support 分层存在且 fixture 不在项目顶层；ReviewConfig 含 2.1 输入上限、2.6 预算默认值和版本字段；review_report schema 可加载；pytest 可发现并跑通冒烟测试 | tests/unit/test_config.py：测试分层目录、默认值/环境覆盖/config_digest 稳定性断言；schema 语法校验 |
 | A2 | diff 解析器与 ChangeSet（scripts/lib/diff_parser.py） | [x] | 2026-07-25 | 按 2.1 字段契约解析 unified diff；覆盖 rename/binary/CRLF/no-newline/删除/新增/snapshot、review_scope、old/new changed lines；新增/snapshot old=`0,0`、删除 new=`0,0`，字段非空；old_to_new 只映射 context；完整新增文件可重建 full_text | tests/unit/test_diff_parser.py：逐边界断言 status/scope、规范路径、`0,0`、context-only 映射、analysis_mode 和 input_sha256 |
 | A3 | 检/脱同源密钥模块（scripts/lib/secret_rules.py + codereview/redaction.py） | [x] | 2026-07-25 | ≥12 种密钥模式 + Shannon 熵；detect 与 redact 共用同一正则表；检测读取原始值，任何输出使用 `[REDACTED:<类型>]`；新侧与删除旧侧均扫描，旧侧定位带 line_side=old；recommendation/reasons/error/stdout/stderr 均可统一扫描 | tests/unit/test_redaction.py：≥48 条真实格式语料检出率 ≥95%、≥10 条良性语料；字符串/配置/删除侧密钥、注释占位符和所有旁路字段无明文 |
-| A4 | 规则引擎框架 + 安全类规则（rule_engine.py + rules_security.py） | [x] | 2026-07-25 | Rule 协议（rule_id/category/severity/confidence/match）；SQLi f-string、shell=True、eval/exec 可检出；仅结构类规则忽略注释/docstring/普通字符串，secrets 不走该通用过滤 | tests/unit/test_rules.py：正样本命中；危险 API 仅出现在注释/字符串时 0 FP；字符串真实密钥仍命中 |
+| A4 | 规则引擎框架 + 安全类规则（rule_engine.py + rules_security.py） | [x] | 2026-07-27 | Rule 协议（rule_id/category/severity/confidence/match）；SQLi f-string、shell=True、eval/exec 可检出；仅结构类规则忽略注释/docstring/普通字符串，secrets 不走该通用过滤 | tests/unit/test_rules.py：正样本命中；危险 API 仅出现在注释/字符串时 0 FP；字符串真实密钥仍命中 |
 | A5 | 异步 + 资源泄漏规则（rules_async.py + rules_resource.py） | [x] | 2026-07-26 | async 内 time.sleep、未 await、open/ClientSession 未 with/close 可检出（含 hunk 跨行） | tests/unit/test_rules.py 扩展：各规则正/负样本 |
 | A6 | DB 生命周期 + 测试缺失规则（rules_db.py + rules_tests.py） | [x] | 2026-07-26 | 连接未关/事务未 commit 可检出；missing-tests 为变更集级启发式，置信度锁 0.5–0.8 | tests/unit/test_rules.py 扩展：missing-tests 断言 confidence<0.8 恒成立 |
 | A7 | AST 增强层（requires_full_file + review_scope 约束） | [x] | 2026-07-26 | changed_lines scope 只报 AST 节点与新变更行相交的问题；full_file scope 明确扫描全文；deleted_lines 不跑普通 AST；纯残缺 diff 不 ast.parse；失败降级 + warning | tests/unit/test_rules_ast.py：增量模式历史问题不报、snapshot 模式同一问题可报、变更行命中、新增文件 AST、删除/残缺/语法错误稳定处理 |
@@ -621,9 +621,9 @@ examples/code_review_agent/
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 验收标准 | 测试方法 |
 |---------|---------|------|---------|---------|---------|
-| B1 | SQLAlchemy 5 表 + ReviewStore ABC + init_db | [ ] | | 2.8 的 5 表模型和索引；report 保存 schema/rule-pack/config/input 版本摘要；SqlReviewStore 支持 SQLite 默认和 URL 切换；get_task_bundle 聚合返回；init-db 幂等 | tests/integration/test_store.py：CRUD、索引/版本字段、bundle 完整性、重复 init-db、脱敏 JSON 字段 |
-| B2 | 稳定去重与四桶路由（codereview/dedup.py） | [ ] | | 三元组去重；按 severity/confidence/evidence 具体度选主项；also_matched 稳定合并；边界无重叠；warnings 只收运行告警 | tests/unit/test_dedup.py：候选乱序输入仍生成相同 JSON；0.50/0.80/1.00 边界和同行同类合并断言 |
-| B3 | MetricsCollector + telemetry span（codereview/metrics.py） | [ ] | | 2.9 的 immutable snapshot 字段完整；span 属性仅走白名单；无 OTel 环境零副作用 | tests/unit/test_metrics.py：三桶/suppressed/Filter 两类计数；snapshot 冻结；敏感文本和绝对路径无法进入 span |
+| B1 | SQLAlchemy 5 表 + ReviewStore ABC + init_db | [x] | 2026-07-26 | 2.8 的 5 表模型和索引；report 保存 schema/rule-pack/config/input 版本摘要；SqlReviewStore 支持 SQLite 默认和 URL 切换；get_task_bundle 聚合返回；init-db 幂等 | tests/integration/test_store.py：CRUD、索引/版本字段、bundle 完整性、重复 init-db、脱敏 JSON 字段 |
+| B2 | 稳定去重与四桶路由（codereview/dedup.py） | [x] | 2026-07-26 | 三元组去重；按 severity/confidence/evidence 具体度选主项；also_matched 稳定合并；边界无重叠；warnings 只收运行告警 | tests/unit/test_dedup.py：候选乱序输入仍生成相同 JSON；0.50/0.80/1.00 边界和同行同类合并断言 |
+| B3 | MetricsCollector + telemetry span（codereview/metrics.py） | [x] | 2026-07-27 | 2.9 的 immutable snapshot 字段完整；span 属性仅走白名单；无 OTel 环境零副作用 | tests/unit/test_metrics.py：三桶/suppressed/Filter 两类计数；snapshot 冻结；敏感文本和绝对路径无法进入 span |
 | B4 | Canonical JSON + Markdown renderer（codereview/report.py） | [ ] | | JSON schema 校验、稳定排序、最终泄漏扫描、原子写入；input_summary 显示 source/scope；MD 仅从 JSON 渲染并区分 old/new 行号；八段完整；ReportRenderer 可扩展 | tests/integration/test_report.py：scope 与 line_side 渲染、JSON/MD/DB 统计一致、重复渲染字节一致、空 findings、原子写入和明文阻止 |
 | B5 | ReviewPipeline 八阶段编排（codereview/pipeline.py，fake runtime + model off 先行） | [ ] | | 5.3 八阶段串通；原始输入仅存在于受控宿主/沙箱；沙箱先检测再脱敏，宿主二次脱敏，出口扫描；异常按 2.8.1 收敛；finally 清理 workspace | tests/integration/test_pipeline.py：真实格式密钥能检出但 task/findings/report/log 无明文；清理成功/失败语义；DB 无原始 diff 全文 |
 | B6 | CLI 四子命令 + dry-run 链路（run_agent.py） | [ ] | | review/show/list/init-db 可用；四输入互斥；支持 `--db-url`；`--dry-run --sandbox local` 零 Key/无 Docker 跑通；仅 dry-run 不换 sandbox；退出码 0/1/2；本期拒绝 command/run-tests/llm-denoise 参数 | tests/e2e/test_cli.py：review→show→list；临时 DB URL；零 Key local <120s；无 Docker strict container exit=2；fail-on-severity 边界 |

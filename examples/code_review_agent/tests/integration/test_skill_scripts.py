@@ -50,25 +50,61 @@ def test_skill_documents_declare_workflow_capabilities_and_blind_spots() -> None
     assert skill_text.startswith("---\nname: code-review\n")
     assert "description:" in skill_text.split("---", 2)[1]
     assert "scripts/manifest.json" in skill_text
+    assert "## Inputs" in skill_text
+    assert "## Review process" in skill_text
+    assert "## Completion gate" in skill_text
+    assert skill_text.count("**Complete when:**") == 6
+    assert "read `references/security-boundaries.md` before" in " ".join(
+        skill_text.split()
+    )
 
-    for rule_name in (
-        "security.md",
-        "async-errors.md",
-        "resource-leak.md",
-        "missing-tests.md",
-        "secrets.md",
-        "db-lifecycle.md",
-    ):
+    rule_ids = {
+        "security.md": (
+            "security.sql-fstring",
+            "security.subprocess-shell-true",
+            "security.dynamic-eval",
+            "security.dynamic-exec",
+            "security.os-system",
+        ),
+        "async-errors.md": (
+            "async.blocking-time-sleep",
+            "async.unawaited-coroutine",
+        ),
+        "resource-leak.md": (
+            "resource.open-without-close",
+            "resource.client-session-without-close",
+        ),
+        "missing-tests.md": ("tests.missing-coverage",),
+        "secrets.md": ("secrets.",),
+        "db-lifecycle.md": (
+            "db.connection-without-close",
+            "db.transaction-without-finalize",
+        ),
+    }
+    for rule_name, expected_ids in rule_ids.items():
         rule_text = (RULES_ROOT / rule_name).read_text(encoding="utf-8").lower()
-        assert "## capability" in rule_text
+        assert "## detection contract" in rule_text
+        assert "## scope and confidence" in rule_text
+        assert "## examples" in rule_text
+        assert "## remediation" in rule_text
         assert "## blind spots" in rule_text
+        assert "### reports" in rule_text
+        assert "### stays quiet" in rule_text
+        assert all(rule_id in rule_text for rule_id in expected_ids)
 
     boundaries = (SKILL_ROOT / "references" / "security-boundaries.md").read_text(
         encoding="utf-8"
     ).lower()
-    assert "filter" in boundaries
+    assert "## boundary map" in boundaries
+    assert "## filter decision order" in boundaries
+    assert "## runtime policy" in boundaries
+    assert "## data handling" in boundaries
+    assert "## failure semantics" in boundaries
+    assert "## completion checklist" in boundaries
     assert "network policy is deny" in boundaries
-    assert "redact" in boundaries
+    assert "sandbox output redaction" in boundaries
+    assert "host field redaction" in boundaries
+    assert "complete exit scan" in boundaries
 
 
 def test_manifest_has_hashed_local_entries_and_fixed_budgets() -> None:

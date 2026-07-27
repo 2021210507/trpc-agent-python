@@ -125,6 +125,89 @@ def test_added_file_uses_ast_and_reports_all_supported_security_patterns() -> No
     assert all(match.source == "ast" for match in matches)
 
 
+def test_ast_detects_supported_dangerous_api_variants() -> None:
+    """验证完整文件 AST 能识别无需数据流推断的危险 API 变体。"""
+
+    change_set = build_snapshot_change_set(
+        {
+            "src/variants.py": (
+                "import builtins\n"
+                "import os\n"
+                "import subprocess\n"
+                "from os import system as run_system\n"
+                "def unsafe(payload, command):\n"
+                "    builtins.eval(payload)\n"
+                "    getattr(builtins, 'eval')(payload)\n"
+                "    run_system(command)\n"
+                "    os.popen(command)\n"
+                "    subprocess.getoutput(command)\n"
+                "    subprocess.getstatusoutput(command)\n"
+            )
+        }
+    )
+
+    matches = _ast_engine().match(change_set)
+
+    assert [(match.rule_id, match.line) for match in matches] == [
+        ("security.dynamic-eval", 6),
+        ("security.dynamic-eval", 7),
+        ("security.os-system", 8),
+        ("security.os-popen", 9),
+        ("security.subprocess-shell-command", 10),
+        ("security.subprocess-shell-command", 11),
+    ]
+
+
+def test_ast_detects_dynamic_sql_without_flagging_safe_formatting() -> None:
+    """验证 AST 检出三种动态 SQL，同时忽略参数化 SQL 和普通格式化。"""
+
+    change_set = build_snapshot_change_set(
+        {
+            "src/sql_variants.py": (
+                "def build(user_id, name, cursor):\n"
+                '    query_concat = "SELECT * FROM users WHERE id = " + user_id\n'
+                '    query_format = "DELETE FROM users WHERE id = {}".format(user_id)\n'
+                '    query_percent = "UPDATE users SET name = \'%s\'" % name\n'
+                '    safe = "SELECT * FROM users WHERE id = %s"\n'
+                "    cursor.execute(safe, (user_id,))\n"
+                '    message = "selected user {}".format(user_id)\n'
+            )
+        }
+    )
+
+    matches = _ast_engine().match(change_set)
+
+    assert [(match.rule_id, match.line) for match in matches] == [
+        ("security.sql-interpolation", 2),
+        ("security.sql-interpolation", 3),
+        ("security.sql-interpolation", 4),
+    ]
+
+
+def test_ast_api_variants_ignore_shadowed_modules_and_reassigned_aliases() -> None:
+    """验证同名参数和已重绑导入别名不会产生标准库 API 误报。"""
+
+    change_set = build_snapshot_change_set(
+        {
+            "src/safe_variants.py": (
+                "import builtins\n"
+                "import os\n"
+                "import subprocess\n"
+                "from os import system as run_system\n"
+                "run_system = safe_runner\n"
+                "def safe(builtins, os, subprocess, getattr, payload, command):\n"
+                "    builtins.eval(payload)\n"
+                "    getattr(builtins, 'eval')(payload)\n"
+                "    os.popen(command)\n"
+                "    subprocess.getoutput(command)\n"
+                "run_system(command)\n"
+            )
+        }
+    )
+
+    assert _ast_engine().match(change_set) == ()
+
+
 def test_deleted_file_does_not_run_ast_code_rules() -> None:
     diff = "\n".join(
         [
