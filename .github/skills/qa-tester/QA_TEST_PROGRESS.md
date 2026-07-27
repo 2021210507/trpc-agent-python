@@ -2,7 +2,7 @@
 
 > Total: 46
 >
-> ✅ Pass: 41 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 5
+> ✅ Pass: 42 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 4
 >
 > Evidence must come from the current execution session. Do not record raw secrets, diff content, environment values, or absolute local paths.
 
@@ -85,7 +85,7 @@
 | Status | ID | Title | Note |
 |---|---|---|---|
 | ✅ | G-01 | Container integration | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_sandbox_safety.py -q -m container --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="2 passed", network_mode=none, sandbox_runs=2, plaintext_hits=0 |
-| ⬜ | G-02 | Real LLM integration | |
+| ✅ | G-02 | Real LLM integration | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration -q -m real_llm --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", explicit_real=true, finding_identity_fields=11, llm_duration_ms_gt=0, plaintext_hits=0 |
 
 ## H. Release regression
 

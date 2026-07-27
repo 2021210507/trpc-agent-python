@@ -26,6 +26,7 @@ from codereview.governance import (
     SandboxGovernanceFilter,
 )
 from codereview.inputs import FixturePayload
+from codereview.model_environment import load_model_environment
 from codereview.pipeline import PipelineFatalError, ReviewPipeline
 from codereview.sandbox import (
     SandboxConfigurationError,
@@ -153,6 +154,9 @@ def _build_pipeline(args: argparse.Namespace) -> tuple[ReviewPipeline, SqlReview
     except SandboxConfigurationError as exc:
         raise CliError("sandbox_configuration_invalid") from exc
 
+    model_environment = None
+    if args.model_mode == "real" and not args.dry_run:
+        model_environment = load_model_environment(_PROJECT_ROOT / ".env")
     store = SqlReviewStore(args.db_url)
     sandbox = SdkSkillSandbox(selection, _SKILL_ROOT, config=config)
     pipeline = ReviewPipeline(
@@ -166,6 +170,7 @@ def _build_pipeline(args: argparse.Namespace) -> tuple[ReviewPipeline, SqlReview
         output_dir=output_dir,
         config=config,
         model_mode="fake" if args.dry_run else args.model_mode,
+        model_environment=model_environment,
     )
     return pipeline, store
 

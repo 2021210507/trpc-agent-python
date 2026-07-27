@@ -79,8 +79,14 @@ class _FakeEnhancementModel(LLMModel):
 class LlmEnhancer:
     """通过 LlmAgent 与 Runner 受限增强报告文本，永不参与 finding 检出。"""
 
-    def __init__(self, *, mode: str = "off", model: LLMModel | None = None) -> None:
-        """初始化显式模式；real 只有调用方明确选择后才读取模型环境变量。"""
+    def __init__(
+        self,
+        *,
+        mode: str = "off",
+        model: LLMModel | None = None,
+        environ: Mapping[str, str] | None = None,
+    ) -> None:
+        """初始化显式模式；real 仅使用调用方提供的受控模型环境或进程环境。"""
 
         if mode not in _MODES:
             raise ValueError("model_mode_invalid")
@@ -88,6 +94,7 @@ class LlmEnhancer:
             raise ValueError("model_mode_off_rejects_model")
         self._mode = mode
         self._model = model
+        self._environment = dict(environ) if environ is not None else None
         self.last_prompt = ""
         self.agent_run_count = 0
 
@@ -184,9 +191,10 @@ class LlmEnhancer:
             return _FakeEnhancementModel("code-review-fake")
         if self._mode != "real":
             raise ValueError("model_mode_off_has_no_model")
-        api_key = os.environ.get("TRPC_AGENT_API_KEY", "")
-        base_url = os.environ.get("TRPC_AGENT_BASE_URL", "")
-        model_name = os.environ.get("TRPC_AGENT_MODEL_NAME", "")
+        environment = os.environ if self._environment is None else self._environment
+        api_key = environment.get("TRPC_AGENT_API_KEY", "")
+        base_url = environment.get("TRPC_AGENT_BASE_URL", "")
+        model_name = environment.get("TRPC_AGENT_MODEL_NAME", "")
         if not api_key or not base_url or not model_name:
             raise ValueError("real_model_configuration_missing")
         return OpenAIModel(model_name, api_key=api_key, base_url=base_url)

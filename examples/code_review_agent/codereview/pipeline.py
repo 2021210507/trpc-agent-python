@@ -285,6 +285,7 @@ class ReviewPipeline:
         task_id_factory: TaskIdFactory = _new_task_id,
         model_mode: str = "off",
         llm_enhancer: LlmEnhancer | None = None,
+        model_environment: Mapping[str, str] | None = None,
     ) -> None:
         """注入持久化、隔离和可选文本增强端口；检测规则始终保持唯一。"""
 
@@ -303,7 +304,10 @@ class ReviewPipeline:
         self._report_writer = report_writer or CanonicalReportWriter()
         self._input_loader = input_loader
         self._task_id_factory = task_id_factory
-        self._llm_enhancer = llm_enhancer or LlmEnhancer(mode=model_mode)
+        self._llm_enhancer = llm_enhancer or LlmEnhancer(
+            mode=model_mode,
+            environ=model_environment,
+        )
 
     def run(self, **input_options: Any) -> PipelineResult:
         """执行八阶段评审并返回 JSON/Markdown/数据库共享的 canonical 报告。"""
