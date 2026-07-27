@@ -35,7 +35,7 @@ from run_checks import _findings  # noqa: E402
 
 
 FIXTURE_DIR = PROJECT_ROOT / "tests" / "fixtures" / "diffs"
-FIXTURE_NAMES = (
+SMOKE_FIXTURE_NAMES = (
     "01_clean",
     "02_security",
     "03_async_leak",
@@ -45,12 +45,50 @@ FIXTURE_NAMES = (
     "07_sandbox_failure",
     "08_secret_redaction",
 )
-_CLI_FIXTURE_NAMES = tuple(name for name in FIXTURE_NAMES if name != "07_sandbox_failure")
+REALISTIC_FIXTURE_NAMES = tuple(f"{name}_realistic" for name in SMOKE_FIXTURE_NAMES)
+FIXTURE_NAMES = (*SMOKE_FIXTURE_NAMES, *REALISTIC_FIXTURE_NAMES)
+
+
+def _fixture_case(name: str) -> str:
+    """返回 smoke/realistic 配对共享的八类场景标识。"""
+
+    return name.removesuffix("_realistic")
+
+
+_CLI_FIXTURE_NAMES = tuple(
+    name
+    for name in FIXTURE_NAMES
+    if _fixture_case(name) != "07_sandbox_failure"
+)
 _SYNTHETIC_SECRETS = (
     "AKIA" + "1234567890ABCDEF",
     "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789",
     "LongSyntheticPasswordValue123!",
 )
+_REALISTIC_EXPECTED_RESULTS = {
+    "01_clean": set(),
+    "02_security": {
+        ("security.sql-fstring", 55, "findings"),
+        ("security.subprocess-shell-true", 61, "findings"),
+    },
+    "03_async_leak": {
+        ("resource.client-session-without-close", 41, "needs_human_review"),
+        ("async.blocking-time-sleep", 42, "findings"),
+        ("async.unawaited-coroutine", 48, "needs_human_review"),
+    },
+    "04_db_lifecycle": {
+        ("db.connection-without-close", 43, "needs_human_review"),
+        ("db.transaction-without-finalize", 44, "findings"),
+    },
+    "05_missing_tests": {("tests.missing-coverage", 1, "needs_human_review")},
+    "06_duplicate_finding": {("security.dynamic-eval", 43, "findings")},
+    "07_sandbox_failure": set(),
+    "08_secret_redaction": {
+        ("secrets.aws_access_key", 7, "findings"),
+        ("secrets.github_token", 8, "findings"),
+        ("secrets.password", 9, "findings"),
+    },
+}
 
 
 class _AllowFixtureGovernance:
@@ -143,16 +181,44 @@ def _fixture_payload(name: str) -> FixturePayload:
     )
 
 
+@pytest.mark.parametrize(
+    "fixture_name",
+    REALISTIC_FIXTURE_NAMES,
+    ids=REALISTIC_FIXTURE_NAMES,
+)
+def test_realistic_fixtures_have_multi_file_engineering_scale(fixture_name: str) -> None:
+    """验证每条 realistic diff 都有双文件及 60–150 行新增代码，而不是无意义短样例。"""
+
+    fixture_path = FIXTURE_DIR / f"{fixture_name}.diff"
+    assert fixture_path.is_file()
+    diff_text = fixture_path.read_text(encoding="utf-8")
+    added_code_lines = [
+        line[1:]
+        for line in diff_text.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    ]
+    added_code_lines = [
+        line
+        for line in added_code_lines
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert 60 <= len(added_code_lines) <= 150
+    assert diff_text.count("diff --git ") >= 2
+
+
 def _run_fixture(name: str, tmp_path: Path) -> tuple[dict[str, Any], SqlReviewStore, Path]:
     """经唯一 ReviewPipeline 执行一条 fixture，并返回 canonical 报告、存储和输出目录。"""
 
     output_dir = tmp_path / "reports"
     store = SqlReviewStore(_db_url(tmp_path / "review.db"))
+    fixture_case = _fixture_case(name)
     sandbox: Any
-    if name == "07_sandbox_failure":
+    if fixture_case == "07_sandbox_failure":
         sandbox = _FailedFixtureSandbox()
     else:
-        sandbox = _FixtureRuleSandbox(expose_secret_in_stdout=name == "08_secret_redaction")
+        sandbox = _FixtureRuleSandbox(
+            expose_secret_in_stdout=fixture_case == "08_secret_redaction",
+        )
     pipeline = ReviewPipeline(
         store=store,
         governance=_AllowFixtureGovernance(),
@@ -227,34 +293,51 @@ def _assert_common_fixture_outputs(
     return bundle
 
 
+def _assert_realistic_results(report: dict[str, Any], fixture_name: str) -> None:
+    """验证 realistic 样例经任一公开链路后的规则、行号与分桶完全一致。"""
+
+    fixture_case = _fixture_case(fixture_name)
+    actual_results = {
+        (finding["rule_id"], finding["line"], bucket)
+        for bucket in ("findings", "needs_human_review")
+        for finding in report[bucket]
+    }
+    assert actual_results == _REALISTIC_EXPECTED_RESULTS[fixture_case]
+    if fixture_case == "06_duplicate_finding":
+        assert report["findings"][0]["extra"]["also_matched"]
+
+
 @pytest.mark.parametrize("fixture_name", FIXTURE_NAMES, ids=FIXTURE_NAMES)
 def test_public_fixtures_generate_expected_reports_and_bundles(
     fixture_name: str,
     tmp_path: Path,
 ) -> None:
-    """验证八条公开 fixture 的类别、桶、失败语义与 JSON/Markdown/SQLite 交付契约。"""
+    """验证八组 smoke/realistic fixture 的类别、桶和完整交付契约。"""
 
     report, store, output_dir = _run_fixture(fixture_name, tmp_path)
     try:
         bundle = _assert_common_fixture_outputs(report, store, output_dir)
+        fixture_case = _fixture_case(fixture_name)
         categories = {finding["category"] for finding in report["findings"]}
         reviewed_categories = categories | {
             finding["category"] for finding in report["needs_human_review"]
         }
+        if fixture_name in REALISTIC_FIXTURE_NAMES:
+            _assert_realistic_results(report, fixture_name)
 
-        if fixture_name == "01_clean":
+        if fixture_case == "01_clean":
             assert report["findings"] == []
             assert report["needs_human_review"] == []
-        elif fixture_name == "02_security":
+        elif fixture_case == "02_security":
             security = [finding for finding in report["findings"] if finding["category"] == "security"]
             assert len(security) >= 2
             assert {finding["severity"] for finding in security} <= {"high", "critical"}
-        elif fixture_name == "03_async_leak":
+        elif fixture_case == "03_async_leak":
             assert {"async-errors", "resource-leak"} <= reviewed_categories
             assert "resource-leak" in {
                 finding["category"] for finding in report["needs_human_review"]
             }
-        elif fixture_name == "04_db_lifecycle":
+        elif fixture_case == "04_db_lifecycle":
             lifecycle_findings = [
                 finding
                 for finding in [*report["findings"], *report["needs_human_review"]]
@@ -262,19 +345,19 @@ def test_public_fixtures_generate_expected_reports_and_bundles(
             ]
             assert "db-lifecycle" in reviewed_categories
             assert len(lifecycle_findings) >= 2
-        elif fixture_name == "05_missing_tests":
+        elif fixture_case == "05_missing_tests":
             assert report["findings"] == []
             assert {finding["category"] for finding in report["needs_human_review"]} == {"missing-tests"}
-        elif fixture_name == "06_duplicate_finding":
+        elif fixture_case == "06_duplicate_finding":
             security = [finding for finding in report["findings"] if finding["category"] == "security"]
             assert len(security) == 1
             assert security[0]["extra"]["also_matched"]
-        elif fixture_name == "07_sandbox_failure":
+        elif fixture_case == "07_sandbox_failure":
             assert report["status"] == "completed_with_warnings"
             assert report["findings"] == []
             assert bundle["sandbox_runs"][0]["status"] == "failed"
             assert "sandbox_failed" in {warning["code"] for warning in report["warnings"]}
-        elif fixture_name == "08_secret_redaction":
+        elif fixture_case == "08_secret_redaction":
             secret_findings = [finding for finding in report["findings"] if finding["category"] == "secrets"]
             serialized_outputs = "\n".join(
                 (
@@ -302,31 +385,34 @@ def test_public_fixtures_run_through_cli_with_real_local_skill(
     fixture_name: str,
     tmp_path: Path,
 ) -> None:
-    """验证七条正常公开 fixture 从 CLI 到真实 Skill、JSON、Markdown 和 SQLite bundle 的完整闭环。"""
+    """验证十四条非故障 fixture 从 CLI 到真实 Skill 与持久化的完整闭环。"""
 
     report, store, output_dir = _run_cli_fixture(fixture_name, tmp_path)
     try:
         bundle = _assert_common_fixture_outputs(report, store, output_dir)
+        fixture_case = _fixture_case(fixture_name)
         all_categories = {
             finding["category"]
             for finding in [*report["findings"], *report["needs_human_review"]]
         }
 
         assert report["status"] in {"completed", "completed_with_warnings"}
-        if fixture_name == "01_clean":
+        if fixture_name in REALISTIC_FIXTURE_NAMES:
+            _assert_realistic_results(report, fixture_name)
+        if fixture_case == "01_clean":
             assert not report["findings"]
-        elif fixture_name == "02_security":
+        elif fixture_case == "02_security":
             assert sum(finding["category"] == "security" for finding in report["findings"]) >= 2
-        elif fixture_name == "03_async_leak":
+        elif fixture_case == "03_async_leak":
             assert {"async-errors", "resource-leak"} <= all_categories
-        elif fixture_name == "04_db_lifecycle":
+        elif fixture_case == "04_db_lifecycle":
             assert "db-lifecycle" in all_categories
-        elif fixture_name == "05_missing_tests":
+        elif fixture_case == "05_missing_tests":
             assert "missing-tests" in all_categories
-        elif fixture_name == "06_duplicate_finding":
+        elif fixture_case == "06_duplicate_finding":
             security = [finding for finding in report["findings"] if finding["category"] == "security"]
             assert len(security) == 1
-        elif fixture_name == "08_secret_redaction":
+        elif fixture_case == "08_secret_redaction":
             assert "secrets" in all_categories
             assert not contains_plaintext_secret(json.dumps(bundle, ensure_ascii=False, sort_keys=True))
     finally:

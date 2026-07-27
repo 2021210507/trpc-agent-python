@@ -68,3 +68,4 @@
 |---------|---------|------|---------|---------|---------|
 | E1 | real 模型实测 + sample_output | [x] | 2026-07-27 | real 模式仅显式开启并用真实 Key 跑通 02_security fixture；sample_output JSON 通过 schema，MD 由该 JSON 渲染，样例不含环境特定绝对路径或敏感值 | @pytest.mark.real_llm 用例 + schema/稳定渲染/明文扫描 |
 | E2 | README + 300–500 字设计说明 + 验收总检 | [x] | 2026-07-27 | README 含用法/AC 代理口径/安全信任域/manifest/沙箱 local 指引/输出限制；设计说明覆盖题目全部主题；风险表完整；AC1–AC8 逐条核对 | 全量 pytest + flake8 + schema 校验 + AC 对照表逐项打勾 |
+| E3 | 8 条 realistic fixture + 成对 E2E | [x] | 2026-07-27 | 原 8 条 smoke fixture 全部保留；每类新增 1 条 60–150 行新增代码、至少双文件且包含正常实现/风险/干扰项的 realistic diff；16 条均验证 JSON+MD+DB，realistic 逐条保持类别、分桶、去重和脱敏契约；evaluate 仍使用原 8 条门禁 | tests/e2e/test_fixtures_e2e.py：8 条 realistic 逐条聚焦通过 + 原 8 条 smoke 回归 + 普通全量回归 |

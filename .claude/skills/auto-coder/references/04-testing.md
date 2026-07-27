@@ -21,7 +21,7 @@
 - 模型：fake model 走与 real 完全相同的调用路径，返回固定模板
 - 数据库：单测用 `sqlite:///:memory:` 或 tmp_path 下临时文件
 
-### 4.3 公开 fixture（8 条，AC1 硬性交付）
+### 4.3 公开 fixture（8 条 smoke + 8 条 realistic，AC1 最低硬性交付仍为原 8 条）
 
 数据位于 `tests/fixtures/diffs/`，由 `tests/e2e/test_fixtures_e2e.py` 通过公开入口执行：
 
@@ -35,6 +35,11 @@
 | 06_duplicate_finding | 同文件同行同类多规则命中 | 去重后 1 条，extra.also_matched 非空 |
 | 07_sandbox_failure | 注入沙箱失败（--inject-sandbox-failure 或 fake runtime） | 0 findings + warnings 记录 + status=completed_with_warnings，报告照常渲染 |
 | 08_secret_redaction | 字符串/配置中含 AWS Key、GitHub PAT、password，并含注释占位符对照 | 真实格式产生 secrets finding；占位符降噪；报告、DB、日志和沙箱摘要字节级无明文 |
+
+每条 smoke fixture 另配一条同名前缀、`_realistic` 后缀的真实工程样例。realistic diff 每条包含
+60–150 行新增代码、至少两个文件，并混合正常实现、真实风险和关键词干扰项；测试必须继续验证精确类别、
+分桶、去重、JSON/Markdown/SQLite bundle 以及明文泄漏扫描。原 8 条 smoke fixture 保留，用于快速定位
+基础链路回归；`evaluate.py` 的 AC1/AC2 公开代理口径仍只统计原 8 条，避免改变既有硬门禁分母。
 
 ### 4.4 评测语料与 CI 硬门禁（AC2 代理）
 

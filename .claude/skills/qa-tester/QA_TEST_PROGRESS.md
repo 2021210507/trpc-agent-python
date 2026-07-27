@@ -1,8 +1,8 @@
 # QA Test Progress — Automatic Code Review Agent
 
-> Total: 46
+> Total: 54
 >
-> ✅ Pass: 46 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 0
+> ✅ Pass: 54 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 0
 >
 > Evidence must come from the current execution session. Do not record raw secrets, diff content, environment values, or absolute local paths.
 
@@ -33,7 +33,7 @@
 | ✅ | B-10 | Canonical reports | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_report.py -q", exit=0, pytest="5 passed", report_sections=8, stable_bytes=true, db_report_matches_json=true, plaintext_hits=0, atomic_partial_targets=0 |
 | ✅ | B-11 | Metrics and Telemetry | command=".\\.venv\\Scripts\\python.exe -m pytest examples/code_review_agent/tests/unit/test_metrics.py -q", exit=0, pytest="4 passed", snapshot_fields=17, telemetry_stages=5, filter_counts="deny=1/review=1", telemetry_allowlist_only=true, plaintext_hits=0 |
 
-## C. Eight public fixtures
+## C. Paired public fixtures (8 smoke + 8 realistic)
 
 | Status | ID | Title | Note |
 |---|---|---|---|
@@ -45,6 +45,14 @@
 | ✅ | C-06 | 06_duplicate_finding | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k \"real_local_skill and 06_duplicate_finding\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", entry=cli_local, security_results=1, also_matched_nonempty=true |
 | ✅ | C-07 | 07_sandbox_failure | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k \"public_fixtures_generate and 07_sandbox_failure\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", entry=fake_runtime_injection, status=completed_with_warnings, sandbox_runs=1 |
 | ✅ | C-08 | 08_secret_redaction | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k \"real_local_skill and 08_secret_redaction\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", entry=cli_local, secret_findings_ge=3, plaintext_hits=0 |
+| ✅ | C-09 | 01_clean_realistic | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 01_clean_realistic --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="3 passed", code_lines=62, files=2, findings=0 |
+| ✅ | C-10 | 02_security_realistic | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 02_security_realistic --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="3 passed", code_lines=65, security_findings=2, safe_decoy_findings=0 |
+| ✅ | C-11 | 03_async_leak_realistic | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 03_async_leak_realistic --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="3 passed", code_lines=60, files=2, findings=1, needs_human_review=2 |
+| ✅ | C-12 | 04_db_lifecycle_realistic | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 04_db_lifecycle_realistic --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="3 passed", code_lines=67, files=2, findings=1, needs_human_review=1 |
+| ✅ | C-13 | 05_missing_tests_realistic | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 05_missing_tests_realistic --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="3 passed", code_lines=62, files=2, findings=0, needs_human_review=1 |
+| ✅ | C-14 | 06_duplicate_finding_realistic | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 06_duplicate_finding_realistic --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="3 passed", code_lines=60, files=2, security_findings=1, also_matched=true |
+| ✅ | C-15 | 07_sandbox_failure_realistic | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 07_sandbox_failure_realistic --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="2 passed", code_lines=64, files=2, status=completed_with_warnings, sandbox_runs=1 |
+| ✅ | C-16 | 08_secret_redaction_realistic | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 08_secret_redaction_realistic --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="3 passed", code_lines=61, files=2, secret_findings=3, plaintext_hits=0 |
 
 ## D. Sandbox and governance security
 
@@ -91,5 +99,5 @@
 
 | Status | ID | Title | Note |
 |---|---|---|---|
-| ✅ | H-01 | Complete ordinary CI | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests -q -m \"not container and not real_llm\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="192 passed", required_skips=0, duration_s=205.8 |
-| ✅ | H-02 | Static style gate | command=".\.venv\Scripts\python.exe -m flake8 examples/code_review_agent", exit=0, status=clean, python_files=56, violations=0 |
+| ✅ | H-01 | Complete ordinary CI | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests -q -m \"not container and not real_llm\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="215 passed", required_skips=0, duration_s=281.3 |
+| ✅ | H-02 | Static style gate | command=".\.venv\Scripts\python.exe -m flake8 examples/code_review_agent", exit=0, status=clean, python_files=56, violations=0, duration_s=2.5 |

@@ -52,11 +52,16 @@ TRPC_AGENT_MODEL_NAME=<模型名称>
 
 `evaluate.py --sandbox local` 是 fake model 的离线**公开代理**评测：它为 AC2 提供可重复证据，但**不证明**官方隐藏样本的检出率或误报率。真实模型和 Container 测试分别使用 `real_llm`、`container` 标记，仅在明确提供对应前置条件后运行。
 
+`tests/fixtures/diffs/` 同时保留 8 条小型 smoke diff 和 8 条同名前缀、以
+`_realistic` 结尾的工程化 diff。后者每条包含 60–150 行新增代码、至少两个文件，以及
+安全实现、真实风险和易误判干扰项；两组样例均通过相同 E2E 入口校验 JSON、Markdown 和
+SQLite bundle。`evaluate.py` 继续只统计原 8 条公开样例，保持 AC1/AC2 门禁口径稳定。
+
 ## 验收对照
 
 | 验收项 | 当前可验证证据 |
 |---|---|
-| AC1 | 8 个公开 fixture 逐条生成 JSON、Markdown 与数据库 bundle。 |
+| AC1 | 8 个公开 smoke fixture 及其 8 个 realistic 配对样例逐条生成 JSON、Markdown 与数据库 bundle。 |
 | AC2 | 离线公开代理语料计算高危 Recall 与 finding 级 FP；不外推为隐藏样本结论。 |
 | AC3 | SQLite 五表保存 task、run、Filter 事件、finding 与 report，并按 task id 查询。 |
 | AC4 | manifest、Filter 与 sandbox 记录超时、截断、预算和非零退出而不中断报告。 |

@@ -35,7 +35,7 @@
 | B-10 | B4 canonical reports | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_report.py -q` | schema, JSON/MD consistency, stable bytes, atomic write, leak blocking pass |
 | B-11 | B3 metrics/Telemetry | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/unit/test_metrics.py -q` | immutable snapshot, bucket/filter counts, span allowlist pass |
 
-## C. Eight public fixtures
+## C. Paired public fixtures (8 smoke + 8 realistic)
 
 | ID | Fixture | Command | Required evidence |
 |---|---|---|---|
@@ -47,6 +47,14 @@
 | C-06 | `06_duplicate_finding` | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 06_duplicate_finding` | one deduplicated result and nonempty also_matched |
 | C-07 | `07_sandbox_failure` | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 07_sandbox_failure` | completed_with_warnings; sandbox record; report still generated |
 | C-08 | `08_secret_redaction` | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 08_secret_redaction` | real-format secrets detected; placeholder reduced; plaintext_hits=0 in reports/DB/logs/runs |
+| C-09 | `01_clean_realistic` | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 01_clean_realistic` | 60–150 added code lines across multiple files; safe decoys; zero findings |
+| C-10 | `02_security_realistic` | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 02_security_realistic` | safe SQL/subprocess decoys ignored; at least two high-risk security findings |
+| C-11 | `03_async_leak_realistic` | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 03_async_leak_realistic` | safe async/resource patterns coexist with async-errors and resource-leak findings |
+| C-12 | `04_db_lifecycle_realistic` | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 04_db_lifecycle_realistic` | managed DB patterns ignored; connection and transaction lifecycle findings retained |
+| C-13 | `05_missing_tests_realistic` | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 05_missing_tests_realistic` | realistic production change without matching tests remains human-review only |
+| C-14 | `06_duplicate_finding_realistic` | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 06_duplicate_finding_realistic` | one same-line security result after dedup; also_matched remains nonempty |
+| C-15 | `07_sandbox_failure_realistic` | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 07_sandbox_failure_realistic` | realistic payload still yields completed_with_warnings and persisted failed run |
+| C-16 | `08_secret_redaction_realistic` | `.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k 08_secret_redaction_realistic` | real-format synthetic secrets detected among benign decoys; plaintext_hits=0 in all sinks |
 
 Every C case must produce canonical JSON, Markdown, and a queryable database record.
 
@@ -105,4 +113,4 @@ Every C case must produce canonical JSON, Markdown, and a queryable database rec
 - AC2 is reported as public-proxy evidence, never as proof of hidden samples.
 - Progress notes and test artifacts contain no plaintext credential values.
 
-Total: **46 cases**.
+Total: **54 cases**.

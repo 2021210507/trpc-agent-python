@@ -105,7 +105,7 @@ examples/code_review_agent/
     │   ├── test_fixtures_e2e.py
     │   └── test_evaluate.py
     ├── fixtures/
-    │   ├── diffs/        # 8 条公开 fixture
+    │   ├── diffs/        # 8 条公开 smoke fixture + 8 条 realistic 配对样例
     │   └── corpus/       # 标注评测语料
     └── support/          # 共享 fake、builder 和断言
 ```

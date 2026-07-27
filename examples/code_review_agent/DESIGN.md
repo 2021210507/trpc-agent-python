@@ -26,7 +26,7 @@
 
 | 项目 | 核对结果 | 证据 |
 |---|---|---|
-| AC1 | ✓ | 8 条 fixture e2e 全部产生报告与 bundle。 |
+| AC1 | ✓ | 8 条 smoke fixture 与 8 条 realistic 配对样例均产生报告与 bundle。 |
 | AC2 | ✓（公开代理） | `evaluate.py` 输出 Recall/FP；不代表隐藏集。 |
 | AC3 | ✓ | 五表初始化、CRUD 与 task bundle 测试。 |
 | AC4 | ✓ | timeout、nonzero、截断与 Filter 短路测试。 |
