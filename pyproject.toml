@@ -55,6 +55,7 @@ dependencies = [
     "watchdog",
     "markdownify>=1.2.0", # MIT License
     "json-repair>=0.40.0", # MIT License: lenient JSON parsing for LLM judge outputs
+    "jsonschema>=4.0.0", # BSD-3-Clause: validate canonical code-review reports
 ]
 
 [project.optional-dependencies]

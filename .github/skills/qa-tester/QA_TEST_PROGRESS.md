@@ -2,7 +2,7 @@
 
 > Total: 46
 >
-> ✅ Pass: 14 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 32
+> ✅ Pass: 16 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 30
 >
 > Evidence must come from the current execution session. Do not record raw secrets, diff content, environment values, or absolute local paths.
 
@@ -30,7 +30,7 @@
 | ✅ | B-07 | Changed-line AST | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/unit/test_rules_ast.py -q", exit=0, pytest="10 passed", ast_variant_hits=9, shadowed_false_positives=0, historical_ignored=true, incomplete_parse_calls=0, parse_warning_recorded=true |
 | ✅ | B-08 | Stable dedup and buckets | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/unit/test_dedup.py -q", exit=0, pytest="8 passed", dedup_key_fields=3, boundary_values="0.50/0.80/1.00", permutation_stable=true, duration_ms=1147 |
 | ✅ | B-09 | Five-table store | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_store.py -q", exit=0, pytest="3 passed", tables=5, bundle_domains=5, plaintext_hits=0, duration_ms=3306 |
-| ⬜ | B-10 | Canonical reports | |
+| ✅ | B-10 | Canonical reports | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_report.py -q", exit=0, pytest="5 passed", report_sections=8, stable_bytes=true, db_report_matches_json=true, plaintext_hits=0, atomic_partial_targets=0 |
 | ✅ | B-11 | Metrics and Telemetry | command=".\\.venv\\Scripts\\python.exe -m pytest examples/code_review_agent/tests/unit/test_metrics.py -q", exit=0, pytest="4 passed", snapshot_fields=17, telemetry_stages=5, filter_counts="deny=1/review=1", telemetry_allowlist_only=true, plaintext_hits=0 |
 
 ## C. Eight public fixtures
