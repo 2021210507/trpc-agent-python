@@ -633,7 +633,7 @@ examples/code_review_agent/
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 验收标准 | 测试方法 |
 |---------|---------|------|---------|---------|---------|
 | C1 | Manifest 驱动 Filter 治理链（codereview/governance.py） | [x] | 2026-07-27 | 基于真实 BaseFilter/run_filters；按 2.7 顺序校验 script/hash/参数/路径/环境/网络/预算/runtime；网络决策读取最终生效配置/可验证证明而非仅凭 capability；FilterAction 与 FindingBucket 分型；非 ALLOW 短路且原因脱敏落库 | tests/integration/test_governance.py：未注册脚本、hash 不符、参数/shell/path/预算逃逸均被拒且副作用为 0；container capability 为 true 但实际 network_mode=none 可放行；cube 无证明默认拒绝、仅用户确认仍拒绝 |
-| C2 | 沙箱工厂、staging 与预算（codereview/sandbox.py） | [ ] | | container 严格默认且实际 `network_mode=none` 可验证；宿主 repo 不可写挂载；staging 后复验 realpath/hash；per-run 与累计预算预检；WorkspaceOutputSpec 限额；环境构造而非透传 | tests/integration/test_sandbox_safety.py：只读/最小 staging、网络配置默认值与覆盖拒绝、超时、输出截断、累计预算、金丝雀环境变量 |
+| C2 | 沙箱工厂、staging 与预算（codereview/sandbox.py） | [x] | 2026-07-27 | container 严格默认且实际 `network_mode=none` 可验证；宿主 repo 不可写挂载；staging 后复验 realpath/hash；per-run 与累计预算预检；WorkspaceOutputSpec 限额；环境构造而非透传 | tests/integration/test_sandbox_safety.py：只读/最小 staging、网络配置默认值与覆盖拒绝、超时、输出截断、累计预算、金丝雀环境变量 |
 | C3 | 沙箱失败即数据 + container 实测 | [ ] | | blocked/timeout/nonzero/truncated/cleanup_error 均形成脱敏 run/warning；任务可出报告则 completed_with_warnings；Docker 下 02/08 fixture 真容器跑通且 network_mode=none 未覆盖 | tests/integration/test_sandbox_safety.py 扩展 + @pytest.mark.container；捕获输出全量明文扫描 |
 
 #### 阶段 D：Agent 入口与评测
