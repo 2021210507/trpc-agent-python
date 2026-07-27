@@ -60,7 +60,7 @@
 | D1 | LLM 增强层（codereview/llm_enhancer.py，fake|real|off） | [x] | 2026-07-27 | fake 与 real 走相同 LlmAgent+Runner 路径；仅改写 recommendation/summary/复核提示；输入全量脱敏；不得改变 finding identity/rule/severity/confidence/bucket/dedup；有 Key 也不自动 real | tests/integration/test_llm_enhancer.py：canonical finding 对象前后逐字段一致；仅允许文本增强字段变化；LLM 输入无明文 |
 | D2 | Agent 入口（agent/agent.py + prompts.py，LlmAgent+SkillToolSet） | [x] | 2026-07-27 | 经 SkillRepository 加载 code-review skill；Agent 与 CLI 共享同一 manifest、Filter、sandbox、storage 和 ReviewPipeline；输出 canonical finding 集合一致 | tests/integration/test_agent_entry.py：双入口一致性断言；两入口对未注册脚本同样拒绝 |
 | D3 | 8 条公开 fixture + e2e（tests/fixtures/diffs/ + tests/e2e/test_fixtures_e2e.py） | [x] | 2026-07-27 | 4.3 表 8 条全交付；逐条断言 findings/桶/状态/JSON+MD+DB；08 号验证“真实密钥能检出且所有出口无明文”及注释占位符降噪 | pytest tests/e2e/test_fixtures_e2e.py 参数化 8/8 通过 + 日志/文件/DB 字节级扫描 |
-| D4 | 评测语料 + evaluate.py CI 硬门禁 | [ ] | | 4.4 语料规模与 blind-spot 观测集达标；匹配键 (file,line,category)；硬门禁：8 fixture、高危 Recall≥0.8、finding-level FP 占比≤0.15、脱敏≥0.95、≤120s；强制 fake+local；摘要含版本/配置/环境；默认不写 DB；README 明示 AC2 为代理 | python examples/code_review_agent/evaluate.py --sandbox local（期望 exit=0）+ tests/e2e/test_evaluate.py：禁止 real/LLM 降噪参数，门禁失败 exit 非零 |
+| D4 | 评测语料 + evaluate.py CI 硬门禁 | [x] | 2026-07-27 | 4.4 语料规模与 blind-spot 观测集达标；匹配键 (file,line,category)；硬门禁：8 fixture、高危 Recall≥0.8、finding-level FP 占比≤0.15、脱敏≥0.95、≤120s；强制 fake+local；摘要含版本/配置/环境；默认不写 DB；README 明示 AC2 为代理 | python examples/code_review_agent/evaluate.py --sandbox local（期望 exit=0）+ tests/e2e/test_evaluate.py：禁止 real/LLM 降噪参数，门禁失败 exit 非零 |
 
 #### 阶段 E：收尾
 

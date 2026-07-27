@@ -2,7 +2,7 @@
 
 > Total: 46
 >
-> ✅ Pass: 36 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 10
+> ✅ Pass: 41 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 5
 >
 > Evidence must come from the current execution session. Do not record raw secrets, diff content, environment values, or absolute local paths.
 
@@ -74,11 +74,11 @@
 
 | Status | ID | Title | Note |
 |---|---|---|---|
-| ⬜ | F-01 | Public corpus and eight fixtures | |
-| ⬜ | F-02 | AC2 public proxy | |
-| ⬜ | F-03 | AC5 redaction rate | |
-| ⬜ | F-04 | AC6 wall-clock budget | |
-| ⬜ | F-05 | Summary and optional history | |
+| ✅ | F-01 | Public corpus and eight fixtures | command=".\.venv\Scripts\python.exe examples/code_review_agent/evaluate.py --sandbox local --output-dir <sanitized-temp>", exit=0, fixtures="8/8", boundary_cases=8, eval_summary=true, duration_s=58.4 |
+| ✅ | F-02 | AC2 public proxy | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_evaluate.py -q -k metrics --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", high_risk_recall=1.0, fp_share=0.0, p_r_f1=true, benign_fp=0, duration_s=59.6 |
+| ✅ | F-03 | AC5 redaction rate | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_evaluate.py -q -k redact --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", redaction_detection_rate=1.0, plaintext_hits=0, duration_s=58.7 |
+| ✅ | F-04 | AC6 wall-clock budget | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_evaluate.py -q -k duration --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", duration_ms_lt=120000, model_mode=fake, runtime=local, duration_s=57.7 |
+| ✅ | F-05 | Summary and optional history | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_evaluate.py -q -k \"summary or write_db or history_rejects\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="2 passed", history_opt_in=true, business_schema_rejected=true, summary_digests=3, duration_s=59.5 |
 
 ## G. Optional integrations
 

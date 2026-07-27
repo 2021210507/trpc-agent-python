@@ -136,10 +136,21 @@ def test_secret_corpus_detection_rate_is_at_least_95_percent() -> None:
 
 @pytest.mark.parametrize("sample", BENIGN_SAMPLES)
 def test_benign_and_placeholder_samples_are_not_detected(sample: str) -> None:
+    """验证普通良性值与文档占位值不会形成敏感信息 finding。"""
+
+    assert detect_secrets(sample) == ()
+
+
+@pytest.mark.parametrize("sample", ("token = 'token'", "token = 'api-key'", "token = 'your-api-key'"))
+def test_assignment_style_placeholder_values_are_not_detected(sample: str) -> None:
+    """验证带变量名的赋值占位符按值而非整段赋值表达式降噪。"""
+
     assert detect_secrets(sample) == ()
 
 
 def test_secret_patterns_are_shared_by_detection_and_redaction() -> None:
+    """验证检出和脱敏复用同一模式表，且脱敏后不存在原始密钥。"""
+
     raw = "token = 'abcdefghijklmnopqrstuvwxyz0123456789'"
     matches = detect_secrets(raw)
     redacted = redact_text(raw)
@@ -152,6 +163,8 @@ def test_secret_patterns_are_shared_by_detection_and_redaction() -> None:
 
 
 def test_redacts_every_transport_field_and_nested_output_data() -> None:
+    """验证嵌套传输字段也会经过同一脱敏出口。"""
+
     secret = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"
     fields = redact_transport_fields(
         recommendation=f"Revoke {secret}",
@@ -168,6 +181,8 @@ def test_redacts_every_transport_field_and_nested_output_data() -> None:
 
 
 def test_change_set_scans_new_context_and_deleted_old_lines() -> None:
+    """验证 ChangeSet 同时定位新侧、上下文与删除旧侧的真实行号。"""
+
     new_secret = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"
     old_secret = "AKIA1234567890ABCDEF"
     context_secret = "sk-abcdefghijklmnopqrstuvwxyz0123456789"

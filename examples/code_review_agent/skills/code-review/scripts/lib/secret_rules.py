@@ -152,7 +152,12 @@ def shannon_entropy(value: str) -> float:
 
 
 def _is_placeholder(value: str) -> bool:
+    """判断命中内容是否仅含文档占位值，兼容 ``token='example'`` 形式。"""
+
     normalized = value.strip().strip("'\"").lower().strip("<>")
+    if "=" in normalized or ":" in normalized:
+        separator = "=" if "=" in normalized else ":"
+        normalized = normalized.split(separator, maxsplit=1)[1].strip().strip("'\"").strip("<>")
     return (
         normalized in _PLACEHOLDER_VALUES
         or "redacted" in normalized
