@@ -10,8 +10,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,12 +22,14 @@ from typing import Any
 from trpc_agent_sdk.code_executors import BaseWorkspaceRuntime
 from trpc_agent_sdk.code_executors import WorkspaceInfo
 from trpc_agent_sdk.code_executors import WorkspaceOutputSpec
+from trpc_agent_sdk.code_executors import WorkspacePutFileInfo
 from trpc_agent_sdk.code_executors import WorkspaceRunProgramSpec
 from trpc_agent_sdk.code_executors import create_container_workspace_runtime
 from trpc_agent_sdk.code_executors import create_local_workspace_runtime
 from trpc_agent_sdk.skills import create_default_skill_repository
 from trpc_agent_sdk.skills.stager import SkillStageRequest
 from trpc_agent_sdk.skills.tools import CopySkillStager
+from trpc_agent_sdk.context import new_invocation_context_id
 
 from codereview.config import ReviewConfig
 from codereview.redaction import redact_text
@@ -97,6 +101,13 @@ class StagedSkill:
     sha256: str
 
 
+@dataclass(frozen=True)
+class SandboxInvocationContext:
+    """为 SDK Skill stager 提供仅含调用标识的最小运行上下文，避免伪造完整 Agent 会话。"""
+
+    invocation_id: str
+
+
 class SandboxBudget:
     """在宿主启动 runtime 前集中预检并累计单次与全局沙箱预算。"""
 
@@ -138,6 +149,118 @@ class SandboxBudget:
             timeout_seconds=timeout_seconds,
             output_bytes=output_bytes,
         )
+
+
+class SdkSkillSandbox:
+    """将 C2 的 runtime、staging 与限额原语组合为 ReviewPipeline 可调用的 SDK 沙箱端口。"""
+
+    def __init__(
+        self,
+        selection: SandboxRuntimeSelection,
+        skill_root: Path,
+        *,
+        config: ReviewConfig | None = None,
+    ) -> None:
+        """绑定已治理的 runtime 和 Skill 根目录；任务 workspace 仅在 execute 后短暂保存到 cleanup。"""
+
+        self.runtime_type = selection.runtime_type
+        self._runtime = selection.runtime
+        self._skill_root = Path(skill_root)
+        self._config = ReviewConfig() if config is None else config
+        self._budget = SandboxBudget(self._config)
+        self._workspaces: dict[str, WorkspaceInfo] = {}
+        self._contexts: dict[str, Any] = {}
+
+    def execute(self, *, task_id: str, change_set: Any, config: ReviewConfig) -> dict[str, Any]:
+        """同步执行一个已授权的 run_checks 请求，并把任何运行失败收敛为结构化数据。"""
+
+        if config != self._config:
+            return _sandbox_error("sandbox_config_mismatch")
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self._execute_async(task_id, change_set))
+        return _sandbox_error("sandbox_event_loop_unsupported")
+
+    def cleanup(self, *, task_id: str) -> None:
+        """清理本任务 workspace；异常由 pipeline 转为不含路径的 cleanup warning。"""
+
+        if task_id not in self._workspaces:
+            return
+        context = self._contexts.get(task_id)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(self._runtime.manager(context).cleanup(task_id, context))
+            self._workspaces.pop(task_id, None)
+            self._contexts.pop(task_id, None)
+            return
+        raise RuntimeError("sandbox_event_loop_unsupported")
+
+    async def _execute_async(self, task_id: str, change_set: Any) -> dict[str, Any]:
+        """创建 workspace、staging Skill、写入最小 diff 载荷、运行固定 argv 并收集限制输出。"""
+
+        try:
+            self._budget.reserve(
+                timeout_seconds=self._config.per_run_timeout_seconds,
+                output_bytes=self._config.max_output_bytes_per_run,
+            )
+        except SandboxBudgetExceeded as exc:
+            return _sandbox_error(str(exc), status="blocked")
+        try:
+            context = SandboxInvocationContext(invocation_id=new_invocation_context_id())
+            workspace = await self._runtime.manager(context).create_workspace(task_id, context)
+            self._workspaces[task_id] = workspace
+            self._contexts[task_id] = context
+            staged = await stage_code_review_skill(self._runtime, workspace, self._skill_root, ctx=context)
+            payload = _change_set_payload(change_set)
+            uses_host_local_workspace = (
+                self.runtime_type == "local" and _local_workspace_path(workspace, ".") is not None
+            )
+            input_path = "work/inputs/diff.json"
+            if uses_host_local_workspace:
+                input_path = f"{staged.workspace_skill_dir}/work/inputs/diff.json"
+            await self._runtime.fs(context).put_files(
+                workspace,
+                [WorkspacePutFileInfo(path=input_path, content=payload)],
+                context,
+            )
+            result = await self._runtime.runner(context).run_program(
+                workspace,
+                build_run_spec(
+                    staged,
+                    self._config,
+                    python_executable=sys.executable if uses_host_local_workspace else "python3",
+                ),
+                context,
+            )
+            capture = capture_workspace_run(result, max_output_bytes=self._config.max_output_bytes_per_run)
+            if capture.timed_out:
+                return _sandbox_result(capture, status="timeout", error_type="timeout")
+            if capture.exit_code != 0:
+                return _sandbox_result(capture, status="failed", error_type="nonzero_exit")
+            if uses_host_local_workspace:
+                findings, output_truncated = _local_findings_from_workspace(
+                    workspace,
+                    staged,
+                    max_output_bytes=self._config.max_output_bytes_per_run,
+                )
+                if output_truncated:
+                    return _sandbox_result(capture, status="error", truncated=True, error_type="output_truncated")
+            else:
+                outputs = await self._runtime.fs(context).collect_outputs(
+                    workspace,
+                    build_output_spec(self._config),
+                    context,
+                )
+                if outputs.limits_hit:
+                    return _sandbox_result(capture, status="error", truncated=True, error_type="output_truncated")
+                findings = _findings_from_outputs(outputs)
+            return _sandbox_result(capture, status="ok", findings=findings)
+        except SandboxStageError as exc:
+            return _sandbox_error(str(exc))
+        except Exception:
+            return _sandbox_error("sandbox_runtime_error")
 
 
 def create_sandbox_runtime(
@@ -213,11 +336,16 @@ def build_output_spec(config: ReviewConfig) -> WorkspaceOutputSpec:
     )
 
 
-def build_run_spec(staged_skill: StagedSkill, config: ReviewConfig) -> WorkspaceRunProgramSpec:
+def build_run_spec(
+    staged_skill: StagedSkill,
+    config: ReviewConfig,
+    *,
+    python_executable: str = "python3",
+) -> WorkspaceRunProgramSpec:
     """构造固定 run_checks argv、白名单环境和每次运行超时，绝不接收 shell 字符串。"""
 
     return WorkspaceRunProgramSpec(
-        cmd="python3",
+        cmd=python_executable,
         args=["scripts/run_checks.py"],
         env=build_sandbox_environment(),
         cwd=staged_skill.workspace_skill_dir,
@@ -231,6 +359,7 @@ async def stage_code_review_skill(
     skill_root: Path,
     *,
     script_id: str = _RUN_CHECKS_SCRIPT_ID,
+    ctx: Any = None,
 ) -> StagedSkill:
     """经 SDK SkillRepository 与 CopySkillStager 复制 Skill，并在沙箱内复验入口摘要。"""
 
@@ -254,21 +383,21 @@ async def stage_code_review_skill(
                 skill_name=_SKILL_NAME,
                 repository=repository,
                 workspace=workspace,
-                ctx=None,  # SDK runtime APIs explicitly accept an optional invocation context.
+                ctx=ctx,
             )
         )
     except Exception as exc:
-        raise SandboxStageError("skill_stage_failed") from exc
+        raise SandboxStageError(f"skill_stage_{type(exc).__name__.lower()}") from exc
 
     entrypoint, expected_sha256 = _manifest_entry(resolved_root, script_id)
     workspace_entrypoint = f"{result.workspace_skill_dir}/scripts/{entrypoint}"
-    try:
-        collected = await runtime.fs(None).collect(workspace, [workspace_entrypoint], None)
-    except Exception as exc:
-        raise SandboxStageError("staged_script_collect_failed") from exc
-    if len(collected) != 1 or collected[0].name != workspace_entrypoint:
-        raise SandboxStageError("staged_script_missing")
-    actual_sha256 = hashlib.sha256(collected[0].content.encode("utf-8")).hexdigest()
+    actual_content = await _staged_entrypoint_content(
+        runtime,
+        workspace,
+        workspace_entrypoint,
+        ctx=ctx,
+    )
+    actual_sha256 = hashlib.sha256(actual_content.encode("utf-8")).hexdigest()
     if actual_sha256 != expected_sha256:
         raise SandboxStageError("staged_script_integrity_mismatch")
     return StagedSkill(
@@ -277,6 +406,69 @@ async def stage_code_review_skill(
         script_id=script_id,
         sha256=actual_sha256,
     )
+
+
+async def _staged_entrypoint_content(
+    runtime: BaseWorkspaceRuntime,
+    workspace: WorkspaceInfo,
+    workspace_entrypoint: str,
+    *,
+    ctx: Any,
+) -> str:
+    """通过 runtime collector 验证 staged 脚本；显式 local fallback 才使用等价的受限本地读取。"""
+
+    try:
+        collected = await runtime.fs(ctx).collect(workspace, [workspace_entrypoint], ctx)
+    except Exception:
+        collected = []
+    if len(collected) == 1 and collected[0].name == workspace_entrypoint:
+        return collected[0].content
+    local_path = _local_workspace_path(workspace, workspace_entrypoint)
+    if local_path is None:
+        raise SandboxStageError("staged_script_missing")
+    try:
+        return local_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise SandboxStageError("staged_script_collect_failed") from exc
+
+
+def _local_workspace_path(workspace: WorkspaceInfo, relative_path: str) -> Path | None:
+    """在显式 local runtime 中把 workspace 相对路径映射到受 containment 约束的本机文件。"""
+
+    try:
+        root = Path(workspace.path).resolve(strict=True)
+        candidate = (root / relative_path).resolve(strict=True)
+        candidate.relative_to(root)
+    except (OSError, ValueError):
+        return None
+    return candidate
+
+
+def _local_findings_from_workspace(
+    workspace: WorkspaceInfo,
+    staged_skill: StagedSkill,
+    *,
+    max_output_bytes: int,
+) -> tuple[list[dict[str, Any]], bool]:
+    """读取 local fallback 的受限 findings 文件；超限时不解析内容且返回截断状态。"""
+
+    output_path = _local_workspace_path(
+        workspace,
+        f"{staged_skill.workspace_skill_dir}/out/findings.json",
+    )
+    if output_path is None:
+        raise ValueError("sandbox_output_missing")
+    try:
+        if output_path.stat().st_size > max_output_bytes:
+            return [], True
+        content = output_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ValueError("sandbox_output_missing") from exc
+    payload = json.loads(content)
+    findings = payload.get("findings") if isinstance(payload, Mapping) else None
+    if not isinstance(findings, list):
+        raise ValueError("sandbox_findings_invalid")
+    return [dict(finding) for finding in findings if isinstance(finding, Mapping)], False
 
 
 def bounded_output(stdout: str, stderr: str, *, max_bytes: int) -> OutputCapture:
@@ -388,3 +580,95 @@ def _truncate_utf8(text: str, max_bytes: int) -> tuple[str, bool]:
         except UnicodeDecodeError:
             prefix = prefix[:-1]
     return "", True
+
+
+def _sandbox_error(error_type: str, *, status: str = "error") -> dict[str, Any]:
+    """生成不含异常原文、路径或凭据的失败运行记录。"""
+
+    return {
+        "status": status,
+        "exit_code": None,
+        "timed_out": False,
+        "truncated": False,
+        "stdout_excerpt": "",
+        "stderr_excerpt": "",
+        "error_type": error_type,
+        "duration_ms": 0,
+        "findings": [],
+    }
+
+
+def _sandbox_result(
+    capture: SandboxRunCapture,
+    *,
+    status: str,
+    truncated: bool = False,
+    error_type: str | None = None,
+    findings: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """将已脱敏且限额的 SDK 运行结果转换为 pipeline 所需的稳定字段。"""
+
+    return {
+        "status": status,
+        "exit_code": capture.exit_code,
+        "timed_out": capture.timed_out,
+        "truncated": capture.output.truncated or truncated,
+        "stdout_excerpt": capture.output.stdout,
+        "stderr_excerpt": capture.output.stderr,
+        "error_type": error_type,
+        "duration_ms": capture.duration_ms,
+        "findings": [] if findings is None else findings,
+    }
+
+
+def _findings_from_outputs(outputs: Any) -> list[dict[str, Any]]:
+    """只从受 WorkspaceOutputSpec 限制且内联的 findings 文件读取结构化候选。"""
+
+    files = getattr(outputs, "files", ())
+    if not isinstance(files, list) or len(files) != 1:
+        raise ValueError("sandbox_output_missing")
+    content = getattr(files[0], "content", "")
+    if not isinstance(content, str):
+        raise ValueError("sandbox_output_invalid")
+    payload = json.loads(content)
+    findings = payload.get("findings") if isinstance(payload, Mapping) else None
+    if not isinstance(findings, list):
+        raise ValueError("sandbox_findings_invalid")
+    return [dict(finding) for finding in findings if isinstance(finding, Mapping)]
+
+
+def _change_set_payload(change_set: Any) -> bytes:
+    """把受控 ChangeSet 重建为最小 unified diff 载荷，原始输入不写入宿主持久化介质。"""
+
+    files = getattr(change_set, "files", ())
+    if not isinstance(files, tuple):
+        raise ValueError("sandbox_change_set_invalid")
+    lines: list[str] = []
+    for file_change in files:
+        path = getattr(file_change, "normalized_path", "")
+        hunks = getattr(file_change, "hunks", ())
+        if not isinstance(path, str) or not path or not isinstance(hunks, tuple):
+            raise ValueError("sandbox_change_set_invalid")
+        lines.extend((f"diff --git a/{path} b/{path}", f"--- a/{path}", f"+++ b/{path}"))
+        for hunk in hunks:
+            lines.append(
+                f"@@ -{hunk.old_start},{hunk.old_count} +{hunk.new_start},{hunk.new_count} @@"
+            )
+            old_line = hunk.old_start
+            new_line = hunk.new_start
+            while old_line < hunk.old_start + hunk.old_count or new_line < hunk.new_start + hunk.new_count:
+                if old_line in hunk.deleted_lines:
+                    lines.append("-" + hunk.deleted_lines[old_line])
+                    old_line += 1
+                elif new_line in hunk.added_lines:
+                    lines.append("+" + hunk.added_lines[new_line])
+                    new_line += 1
+                else:
+                    context = hunk.context_lines.get(new_line)
+                    if context is None:
+                        raise ValueError("sandbox_change_set_hunk_invalid")
+                    lines.append(" " + context)
+                    old_line += 1
+                    new_line += 1
+    payload = {"source_kind": "fixture", "diff": "\n".join(lines) + "\n"}
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")

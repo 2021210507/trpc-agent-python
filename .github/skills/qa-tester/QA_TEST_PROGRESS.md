@@ -2,7 +2,7 @@
 
 > Total: 46
 >
-> ✅ Pass: 19 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 27
+> ✅ Pass: 24 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 22
 >
 > Evidence must come from the current execution session. Do not record raw secrets, diff content, environment values, or absolute local paths.
 
@@ -63,11 +63,11 @@
 
 | Status | ID | Title | Note |
 |---|---|---|---|
-| ⬜ | E-01 | Idempotent database initialization | |
-| ⬜ | E-02 | Zero-Key local dry-run | |
-| ⬜ | E-03 | Show/list task bundle | |
-| ⬜ | E-04 | Alternate SQL URL | |
-| ⬜ | E-05 | Exit codes | |
+| ✅ | E-01 | Idempotent database initialization | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k init_db", exit=0, pytest="1 passed", init_exit=0, tables=5, duration_s=18.1 |
+| ✅ | E-02 | Zero-Key local dry-run | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k dry_run", exit=0, pytest="1 passed", model_key_required=false, sandbox=local, reports=2, duration_s=16.9 |
+| ✅ | E-03 | Show/list task bundle | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k \"show or list\"", exit=0, pytest="1 passed", bundle_domains=5, sandbox_runs=1, filter_events=1, duration_s=17.0 |
+| ✅ | E-04 | Alternate SQL URL | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k db_url", exit=0, pytest="1 passed", temporary_sqlite=true, business_review_db_created=false, duration_s=16.3 |
+| ✅ | E-05 | Exit codes | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k \"exit or fail_on_severity\"", exit=0, pytest="2 passed", exit_codes="0/1/2", strict_container=2, duration_s=21.7 |
 | ✅ | E-06 | Partial failure continues | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_pipeline.py -q -k \"failure or warning or cleanup\"", exit=0, pytest="1 passed", status=completed_with_warnings, sandbox_runs=1, cleanup_warning=true |
 
 ## F. Offline evaluation gates

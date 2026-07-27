@@ -17,6 +17,8 @@ from typing import Any
 
 import pytest
 from trpc_agent_sdk.code_executors import CodeFile
+from trpc_agent_sdk.code_executors import ManifestFileRef
+from trpc_agent_sdk.code_executors import ManifestOutput
 from trpc_agent_sdk.code_executors import WorkspaceInfo
 from trpc_agent_sdk.code_executors import WorkspaceRunResult
 
@@ -31,6 +33,8 @@ from codereview.sandbox import (  # noqa: E402
     SandboxBudgetExceeded,
     SandboxConfigurationError,
     SandboxStageError,
+    SandboxRuntimeSelection,
+    SdkSkillSandbox,
     StagedSkill,
     bounded_output,
     build_run_spec,
@@ -40,6 +44,12 @@ from codereview.sandbox import (  # noqa: E402
     create_sandbox_runtime,
     stage_code_review_skill,
 )
+
+SCRIPTS_ROOT = PROJECT_ROOT / "skills" / "code-review" / "scripts"
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+
+from lib.diff_parser import parse_unified_diff  # noqa: E402
 
 
 SKILL_ROOT = PROJECT_ROOT / "skills" / "code-review"
@@ -127,6 +137,52 @@ class _FakeRuntime:
         """返回仅支持 stager 辅助操作的 fake runner。"""
 
         return self._runner
+
+
+class _RunFs(_FakeFs):
+    """扩展 fake filesystem，以受控 findings 输出或输出截断模拟实际 collect_outputs。"""
+
+    def __init__(self, *, limits_hit: bool = False) -> None:
+        """保存是否触发 SDK 输出收集上限，并复用可信 staged 脚本内容。"""
+
+        super().__init__()
+        self._limits_hit = limits_hit
+
+    async def collect_outputs(self, _ws: WorkspaceInfo, _spec: Any, _ctx: Any = None) -> ManifestOutput:
+        """返回最小 findings JSON 或 limits_hit，避免测试执行真实规则脚本。"""
+
+        return ManifestOutput(
+            files=[ManifestFileRef(name="out/findings.json", content='{"findings": []}')],
+            limits_hit=self._limits_hit,
+        )
+
+
+class _RunRuntime(_FakeRuntime):
+    """允许为 SDK 沙箱端口注入 timeout 或 nonzero 的一次运行结果。"""
+
+    def __init__(self, fs: _RunFs, result: WorkspaceRunResult) -> None:
+        """替换基础 fake runner 的返回值，以驱动失败即数据分支。"""
+
+        super().__init__(fs)
+        self._run_result = result
+
+    def runner(self, _ctx: Any = None) -> Any:
+        """返回带预设运行结果的最小 runner，仍支持 stager 的辅助调用。"""
+
+        parent_runner = super().runner()
+        run_result = self._run_result
+
+        class _Runner:
+            """在保留 stager 调用记录的同时返回测试指定的主执行结果。"""
+
+            async def run_program(self, ws: WorkspaceInfo, spec: Any, ctx: Any = None) -> WorkspaceRunResult:
+                """对 bash stager 辅助命令成功返回，对固定 python3 命令返回预设结果。"""
+
+                if spec.cmd == "bash":
+                    return await parent_runner.run_program(ws, spec, ctx)
+                return run_result
+
+        return _Runner()
 
 
 def test_container_factory_defaults_to_verified_none_and_rejects_mount_or_override() -> None:
@@ -258,3 +314,36 @@ def test_run_spec_and_timeout_capture_remain_bounded() -> None:
     assert capture.output.truncated is True
     assert capture.duration_ms == 31
     assert secret not in capture.output.stdout
+
+
+@pytest.mark.parametrize(
+    ("run_result", "limits_hit", "expected_status", "expected_error"),
+    (
+        (WorkspaceRunResult(exit_code=0, timed_out=True), False, "timeout", "timeout"),
+        (WorkspaceRunResult(exit_code=9), False, "failed", "nonzero_exit"),
+        (WorkspaceRunResult(exit_code=0), True, "error", "output_truncated"),
+    ),
+)
+def test_sdk_sandbox_converts_runtime_failures_to_structured_data(
+    run_result: WorkspaceRunResult,
+    limits_hit: bool,
+    expected_status: str,
+    expected_error: str,
+) -> None:
+    """timeout、非零和输出截断都应返回脱敏结构化结果，而不是让评审链路崩溃。"""
+
+    runtime = _RunRuntime(_RunFs(limits_hit=limits_hit), run_result)
+    sandbox = SdkSkillSandbox(
+        SandboxRuntimeSelection(runtime, "local", None, False, True),
+        SKILL_ROOT,
+    )
+    change_set = parse_unified_diff(
+        "diff --git a/src/a.py b/src/a.py\n--- a/src/a.py\n+++ b/src/a.py\n@@ -1 +1 @@\n-old\n+new\n",
+        source_kind="fixture",
+    )
+
+    result = sandbox.execute(task_id="sandbox-failure", change_set=change_set, config=ReviewConfig())
+
+    assert result["status"] == expected_status
+    assert result["error_type"] == expected_error
+    assert result["findings"] == []

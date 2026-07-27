@@ -43,7 +43,7 @@
 | B3 | MetricsCollector + telemetry span（codereview/metrics.py） | [x] | 2026-07-27 | 2.9 的 immutable snapshot 字段完整；span 属性仅走白名单；无 OTel 环境零副作用 | tests/unit/test_metrics.py：三桶/suppressed/Filter 两类计数；snapshot 冻结；敏感文本和绝对路径无法进入 span |
 | B4 | Canonical JSON + Markdown renderer（codereview/report.py） | [x] | 2026-07-27 | JSON schema 校验、稳定排序、最终泄漏扫描、原子写入；input_summary 显示 source/scope；MD 仅从 JSON 渲染并区分 old/new 行号；八段完整；ReportRenderer 可扩展 | tests/integration/test_report.py：scope 与 line_side 渲染、JSON/MD/DB 统计一致、重复渲染字节一致、空 findings、原子写入和明文阻止 |
 | B5 | ReviewPipeline 八阶段编排（codereview/pipeline.py，fake runtime + model off 先行） | [x] | 2026-07-27 | 5.3 八阶段串通；原始输入仅存在于受控宿主/沙箱；沙箱先检测再脱敏，宿主二次脱敏，出口扫描；异常按 2.8.1 收敛；finally 清理 workspace | tests/integration/test_pipeline.py：真实格式密钥能检出但 task/findings/report/log 无明文；清理成功/失败语义；DB 无原始 diff 全文 |
-| B6 | CLI 四子命令 + dry-run 链路（run_agent.py） | [ ] | | review/show/list/init-db 可用；四输入互斥；支持 `--db-url`；`--dry-run --sandbox local` 零 Key/无 Docker 跑通；仅 dry-run 不换 sandbox；退出码 0/1/2；本期拒绝 command/run-tests/llm-denoise 参数 | tests/e2e/test_cli.py：review→show→list；临时 DB URL；零 Key local <120s；无 Docker strict container exit=2；fail-on-severity 边界 |
+| B6 | CLI 四子命令 + dry-run 链路（run_agent.py） | [x] | 2026-07-27 | review/show/list/init-db 可用；四输入互斥；支持 `--db-url`；`--dry-run --sandbox local` 零 Key/无 Docker 跑通；仅 dry-run 不换 sandbox；退出码 0/1/2；本期拒绝 command/run-tests/llm-denoise 参数 | tests/e2e/test_cli.py：review→show→list；临时 DB URL；零 Key local <120s；无 Docker strict container exit=2；fail-on-severity 边界 |
 
 #### 阶段 C：安全边界
 
@@ -51,7 +51,7 @@
 |---------|---------|------|---------|---------|---------|
 | C1 | Manifest 驱动 Filter 治理链（codereview/governance.py） | [x] | 2026-07-27 | 基于真实 BaseFilter/run_filters；按 2.7 顺序校验 script/hash/参数/路径/环境/网络/预算/runtime；网络决策读取最终生效配置/可验证证明而非仅凭 capability；FilterAction 与 FindingBucket 分型；非 ALLOW 短路且原因脱敏落库 | tests/integration/test_governance.py：未注册脚本、hash 不符、参数/shell/path/预算逃逸均被拒且副作用为 0；container capability 为 true 但实际 network_mode=none 可放行；cube 无证明默认拒绝、仅用户确认仍拒绝 |
 | C2 | 沙箱工厂、staging 与预算（codereview/sandbox.py） | [x] | 2026-07-27 | container 严格默认且实际 `network_mode=none` 可验证；宿主 repo 不可写挂载；staging 后复验 realpath/hash；per-run 与累计预算预检；WorkspaceOutputSpec 限额；环境构造而非透传 | tests/integration/test_sandbox_safety.py：只读/最小 staging、网络配置默认值与覆盖拒绝、超时、输出截断、累计预算、金丝雀环境变量 |
-| C3 | 沙箱失败即数据 + container 实测 | [ ] | | blocked/timeout/nonzero/truncated/cleanup_error 均形成脱敏 run/warning；任务可出报告则 completed_with_warnings；Docker 下 02/08 fixture 真容器跑通且 network_mode=none 未覆盖 | tests/integration/test_sandbox_safety.py 扩展 + @pytest.mark.container；捕获输出全量明文扫描 |
+| C3 | 沙箱失败即数据 + container 实测 | [~] | | blocked/timeout/nonzero/truncated/cleanup_error 均形成脱敏 run/warning；任务可出报告则 completed_with_warnings；Docker 下 02/08 fixture 真容器跑通且 network_mode=none 未覆盖 | tests/integration/test_sandbox_safety.py 扩展 + @pytest.mark.container；捕获输出全量明文扫描 |
 
 #### 阶段 D：Agent 入口与评测
 

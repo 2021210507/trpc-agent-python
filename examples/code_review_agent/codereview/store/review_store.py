@@ -147,6 +147,10 @@ class ReviewStore(ABC):
         """Return task, runs, events, findings, and report together."""
 
     @abstractmethod
+    def list_task_summaries(self) -> list[dict[str, Any]]:
+        """返回不含报告正文、输入内容或路径的任务安全摘要列表。"""
+
+    @abstractmethod
     def delete_task(self, task_id: str) -> bool:
         """Delete a task and all child rows."""
 
@@ -431,6 +435,26 @@ class SqlReviewStore(ReviewStore):
                 "findings": [_model_dict(row) for row in findings],
                 "report": _model_dict(report) if report is not None else None,
             }
+
+    def list_task_summaries(self) -> list[dict[str, Any]]:
+        """按创建时间倒序返回 CLI 所需最小任务字段，避免调用方接触存储会话。"""
+
+        with self._session() as session:
+            tasks = session.scalars(
+                select(ReviewTaskModel).order_by(
+                    ReviewTaskModel.created_at.desc(),
+                    ReviewTaskModel.id,
+                )
+            ).all()
+            return [
+                {
+                    "id": task.id,
+                    "status": task.status,
+                    "input_type": task.input_type,
+                    "created_at": task.created_at.isoformat(),
+                }
+                for task in tasks
+            ]
 
     def delete_task(self, task_id: str) -> bool:
         with self._session() as session:
