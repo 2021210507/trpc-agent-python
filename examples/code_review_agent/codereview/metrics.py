@@ -237,6 +237,11 @@ class MetricsCollector:
             self._error_type_distribution.get(normalized, 0) + 1
         )
 
+    def record_warning(self, count: int = 1) -> None:
+        """累计后处理阶段新增的安全 warning，避免重放 finding 统计。"""
+
+        self._warning_count += _non_negative_count(count, "count")
+
     def emit_span(
         self,
         stage: str,

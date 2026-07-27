@@ -20,6 +20,7 @@ from uuid import uuid4
 from codereview.config import ReviewConfig
 from codereview.dedup import BucketedFindings, route_findings
 from codereview.inputs import InputResult, InputValidationError, load_input
+from codereview.llm_enhancer import LlmEnhancer
 from codereview.metrics import MetricsCollector
 from codereview.redaction import contains_plaintext_secret, redact_data
 from codereview.report import CanonicalReportWriter, ReportValidationError
@@ -283,11 +284,14 @@ class ReviewPipeline:
         input_loader: InputLoader = load_input,
         task_id_factory: TaskIdFactory = _new_task_id,
         model_mode: str = "off",
+        llm_enhancer: LlmEnhancer | None = None,
     ) -> None:
-        """注入持久化与隔离端口；本任务只允许关闭模型增强。"""
+        """注入持久化、隔离和可选文本增强端口；检测规则始终保持唯一。"""
 
-        if model_mode != "off":
-            raise ValueError("B5 only supports model_mode='off'")
+        if model_mode not in {"off", "fake", "real"}:
+            raise ValueError("model_mode_invalid")
+        if llm_enhancer is not None and llm_enhancer.mode != model_mode:
+            raise ValueError("model_mode_and_enhancer_mismatch")
         runtime_type = getattr(sandbox, "runtime_type", None)
         if runtime_type not in _RUNTIME_TYPES:
             raise ValueError("sandbox runtime_type is invalid")
@@ -299,6 +303,7 @@ class ReviewPipeline:
         self._report_writer = report_writer or CanonicalReportWriter()
         self._input_loader = input_loader
         self._task_id_factory = task_id_factory
+        self._llm_enhancer = llm_enhancer or LlmEnhancer(mode=model_mode)
 
     def run(self, **input_options: Any) -> PipelineResult:
         """执行八阶段评审并返回 JSON/Markdown/数据库共享的 canonical 报告。"""
@@ -473,6 +478,30 @@ class ReviewPipeline:
             "metrics": metrics.snapshot().to_dict(),
             "final_conclusion": _final_conclusion(bucketed),
         }
+        if self._llm_enhancer.mode != "off":
+            llm_started = perf_counter()
+            try:
+                report = self._llm_enhancer.enhance(report)
+            except Exception:
+                report["warnings"] = [
+                    *report["warnings"],
+                    _warning("llm_enhancement_failed", stage="llm"),
+                ]
+                status = "completed_with_warnings"
+                report["status"] = status
+                metrics.record_warning()
+                metrics.record_error("llm_enhancement_failed")
+            llm_duration_ms = (perf_counter() - llm_started) * 1000
+            metrics.record_stage_duration("llm", llm_duration_ms)
+            report["metrics"] = metrics.snapshot().to_dict()
+            metrics.emit_span(
+                "llm",
+                status=report["status"],
+                duration_ms=llm_duration_ms,
+                error_type="llm_enhancement_failed"
+                if report["status"] == "completed_with_warnings"
+                else None,
+            )
 
         try:
             canonical = self._report_writer.validate(report)
@@ -480,8 +509,8 @@ class ReviewPipeline:
                 "events": filter_events,
                 "runs": sandbox_runs,
                 "findings": [
-                    *bucketed.findings,
-                    *bucketed.needs_human_review,
+                    *canonical["findings"],
+                    *canonical["needs_human_review"],
                     *bucketed.suppressed,
                 ],
                 "report": canonical,

@@ -64,7 +64,7 @@
 | Status | ID | Title | Note |
 |---|---|---|---|
 | ✅ | E-01 | Idempotent database initialization | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k init_db", exit=0, pytest="1 passed", init_exit=0, tables=5, duration_s=18.1 |
-| ✅ | E-02 | Zero-Key local dry-run | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k dry_run", exit=0, pytest="1 passed", model_key_required=false, sandbox=local, reports=2, duration_s=16.9 |
+| ✅ | E-02 | Zero-Key local dry-run | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k dry_run --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", model_key_required=false, model_path=fake, sandbox=local, reports=2, duration_s=23.1 |
 | ✅ | E-03 | Show/list task bundle | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k \"show or list\"", exit=0, pytest="1 passed", bundle_domains=5, sandbox_runs=1, filter_events=1, duration_s=17.0 |
 | ✅ | E-04 | Alternate SQL URL | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k db_url", exit=0, pytest="1 passed", temporary_sqlite=true, business_review_db_created=false, duration_s=16.3 |
 | ✅ | E-05 | Exit codes | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k \"exit or fail_on_severity\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="2 passed", exit_codes="0/1/2", invalid_request=2, container_available_exit=0 |

@@ -165,7 +165,7 @@ def _build_pipeline(args: argparse.Namespace) -> tuple[ReviewPipeline, SqlReview
         sandbox=sandbox,
         output_dir=output_dir,
         config=config,
-        model_mode="off",
+        model_mode="fake" if args.dry_run else args.model_mode,
     )
     return pipeline, store
 
@@ -283,6 +283,7 @@ def _build_parser() -> argparse.ArgumentParser:
     review.add_argument("--output-dir", default="out")
     review.add_argument("--sandbox", choices=("container", "cube", "local"), default="container")
     review.add_argument("--dry-run", action="store_true")
+    review.add_argument("--model-mode", choices=("fake", "real", "off"), default="fake")
     review.add_argument("--fail-on-severity", choices=tuple(_SEVERITY_RANK))
     _add_db_argument(review)
     review.set_defaults(handler=_review)

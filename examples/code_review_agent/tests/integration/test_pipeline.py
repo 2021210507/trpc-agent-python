@@ -184,6 +184,17 @@ class _WarningSandbox:
         """fake sandbox 不创建 workspace，因此 cleanup 是无副作用操作。"""
 
 
+class _FailingEnhancer:
+    """模拟模型或 Runner 异常，验证增强故障不会中断确定性评审交付。"""
+
+    mode = "fake"
+
+    def enhance(self, _report: dict[str, object]) -> dict[str, object]:
+        """抛出不应离开 pipeline 的异常，也不携带原始输入内容。"""
+
+        raise RuntimeError("fake_enhancement_failure")
+
+
 def _db_url(path: Path) -> str:
     """返回隔离测试数据库的 SQLAlchemy URL。"""
 
@@ -340,3 +351,32 @@ def test_pipeline_short_circuits_denied_sandbox_execution(tmp_path: Path) -> Non
     assert bundle["sandbox_runs"] == []
     assert bundle["filter_events"][0]["action"] == "deny"
     assert "filter_deny" in {warning["code"] for warning in result.report["warnings"]}
+
+
+def test_pipeline_converts_llm_enhancement_failure_to_warning(tmp_path: Path) -> None:
+    """验证模型配置、网络或 Runner 异常都降级为脱敏 warning 并保持数据库报告完整。"""
+
+    store = SqlReviewStore(_db_url(tmp_path / "review.db"))
+    pipeline = ReviewPipeline(
+        store=store,
+        governance=_AllowGovernance(),
+        sandbox=_WarningSandbox(status="ok", error_type="", truncated=False),
+        output_dir=tmp_path / "reports",
+        task_id_factory=lambda: "pipeline-task-llm-failure",
+        model_mode="fake",
+        llm_enhancer=_FailingEnhancer(),
+    )
+
+    result = pipeline.run(
+        fixture=FixturePayload(
+            payload_type="files",
+            file_contents={"src/service.py": "def run():\n    return None\n"},
+        )
+    )
+    bundle = store.get_task_bundle(result.task_id)
+
+    assert result.status == "completed_with_warnings"
+    assert "llm_enhancement_failed" in {warning["code"] for warning in result.report["warnings"]}
+    assert result.report["metrics"]["error_type_distribution"] == {"llm_enhancement_failed": 1}
+    assert bundle is not None
+    assert bundle["task"]["status"] == "completed_with_warnings"
