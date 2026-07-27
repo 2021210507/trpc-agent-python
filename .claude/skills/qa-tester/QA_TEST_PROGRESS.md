@@ -2,7 +2,7 @@
 
 > Total: 46
 >
-> ✅ Pass: 17 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 29
+> ✅ Pass: 19 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 27
 >
 > Evidence must come from the current execution session. Do not record raw secrets, diff content, environment values, or absolute local paths.
 
@@ -51,12 +51,12 @@
 | Status | ID | Title | Note |
 |---|---|---|---|
 | ✅ | D-01 | Execution manifest integrity | command=".\\.venv\\Scripts\\python.exe -m pytest examples/code_review_agent/tests/integration/test_skill_scripts.py -q -k manifest", exit=0, pytest="1 passed", registered_scripts=2, sha256_matches=2, timeout_seconds=30, max_output_bytes=1048576, duration_ms=1098 |
-| ⬜ | D-02 | Filter short-circuit | |
+| ✅ | D-02 | Filter short-circuit | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_governance.py -q -k \"deny or human or sentinel\"", exit=0, pytest="3 passed", blocked_requests=5, sandbox_runs=0, plaintext_hits=0 |
 | ⬜ | D-03 | Path and input escape | |
 | ⬜ | D-04 | Environment allowlist | |
 | ⬜ | D-05 | Timeout as data | |
 | ⬜ | D-06 | Output limits | |
-| ⬜ | D-07 | Runtime network policy | |
+| ✅ | D-07 | Runtime network policy | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_governance.py -q -k \"network or cube or local or container\"", exit=0, pytest="2 passed", container_mode=none, cube_action=deny, local_warning=1 |
 | ⬜ | D-08 | All-sink redaction | |
 
 ## E. CLI, persistence, and failure semantics
