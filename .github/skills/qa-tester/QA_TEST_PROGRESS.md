@@ -2,7 +2,7 @@
 
 > Total: 46
 >
-> ✅ Pass: 16 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 30
+> ✅ Pass: 17 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 29
 >
 > Evidence must come from the current execution session. Do not record raw secrets, diff content, environment values, or absolute local paths.
 
@@ -68,7 +68,7 @@
 | ⬜ | E-03 | Show/list task bundle | |
 | ⬜ | E-04 | Alternate SQL URL | |
 | ⬜ | E-05 | Exit codes | |
-| ⬜ | E-06 | Partial failure continues | |
+| ✅ | E-06 | Partial failure continues | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_pipeline.py -q -k \"failure or warning or cleanup\"", exit=0, pytest="1 passed", status=completed_with_warnings, sandbox_runs=1, cleanup_warning=true |
 
 ## F. Offline evaluation gates
 
