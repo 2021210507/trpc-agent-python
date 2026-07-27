@@ -2,7 +2,7 @@
 
 > Total: 46
 >
-> ✅ Pass: 42 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 4
+> ✅ Pass: 46 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 0
 >
 > Evidence must come from the current execution session. Do not record raw secrets, diff content, environment values, or absolute local paths.
 
@@ -52,8 +52,8 @@
 |---|---|---|---|
 | ✅ | D-01 | Execution manifest integrity | command=".\\.venv\\Scripts\\python.exe -m pytest examples/code_review_agent/tests/integration/test_skill_scripts.py -q -k manifest", exit=0, pytest="1 passed", registered_scripts=2, sha256_matches=2, timeout_seconds=30, max_output_bytes=1048576, duration_ms=1098 |
 | ✅ | D-02 | Filter short-circuit | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_governance.py -q -k \"deny or human or sentinel\"", exit=0, pytest="3 passed", blocked_requests=5, sandbox_runs=0, plaintext_hits=0 |
-| ⬜ | D-03 | Path and input escape | |
-| ⬜ | D-04 | Environment allowlist | |
+| ✅ | D-03 | Path and input escape | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_inputs.py -q -k \"traversal or symlink or junction or limit\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="2 passed", escape_rejections=2, pre_stage_rejection=true, plaintext_hits=0 |
+| ✅ | D-04 | Environment allowlist | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_sandbox_safety.py -q -k environment --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", sandbox_env_allowlist=true, canary_absent=true, plaintext_hits=0 |
 | ✅ | D-05 | Timeout as data | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_sandbox_safety.py -q -k timeout", exit=0, pytest="2 passed", timed_out=true, structured_error=timeout, duration_s=5.5 |
 | ✅ | D-06 | Output limits | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_sandbox_safety.py -q -k \"output or trunc\"", exit=0, pytest="2 passed", output_limit_bytes=1048576, truncated_status=error, duration_s=5.4 |
 | ✅ | D-07 | Runtime network policy | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_governance.py -q -k \"network or cube or local or container\"", exit=0, pytest="2 passed", container_mode=none, cube_action=deny, local_warning=1 |
@@ -91,5 +91,5 @@
 
 | Status | ID | Title | Note |
 |---|---|---|---|
-| ⬜ | H-01 | Complete ordinary CI | |
-| ⬜ | H-02 | Static style gate | |
+| ✅ | H-01 | Complete ordinary CI | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests -q -m \"not container and not real_llm\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="192 passed", required_skips=0, duration_s=205.8 |
+| ✅ | H-02 | Static style gate | command=".\.venv\Scripts\python.exe -m flake8 examples/code_review_agent", exit=0, status=clean, python_files=56, violations=0 |
