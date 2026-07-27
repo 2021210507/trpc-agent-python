@@ -396,7 +396,10 @@ def _container_db_url(path: Path) -> str:
 
 
 @pytest.mark.container
-@pytest.mark.parametrize("fixture_name", ("02_security", "08_secret_redaction"))
+@pytest.mark.parametrize(
+    "fixture_name",
+    ("02_security_simple", "08_secret_redaction_simple"),
+)
 def test_container_executes_fixture_with_verified_network_none(
     fixture_name: str,
     tmp_path: Path,

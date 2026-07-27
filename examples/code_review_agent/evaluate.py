@@ -33,14 +33,14 @@ FIXTURE_DIR = PROJECT_ROOT / "tests" / "fixtures" / "diffs"
 RUN_CHECKS_PATH = PROJECT_ROOT / "skills" / "code-review" / "scripts" / "run_checks.py"
 RUN_AGENT_PATH = PROJECT_ROOT / "run_agent.py"
 FIXTURE_NAMES = (
-    "01_clean",
-    "02_security",
-    "03_async_leak",
-    "04_db_lifecycle",
-    "05_missing_tests",
-    "06_duplicate_finding",
-    "07_sandbox_failure",
-    "08_secret_redaction",
+    "01_clean_simple",
+    "02_security_simple",
+    "03_async_leak_simple",
+    "04_db_lifecycle_simple",
+    "05_missing_tests_simple",
+    "06_duplicate_finding_simple",
+    "07_sandbox_failure_simple",
+    "08_secret_redaction_simple",
 )
 FINDING_CONFIDENCE = 0.80
 HARD_LIMIT_MS = 120_000

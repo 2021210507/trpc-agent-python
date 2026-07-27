@@ -8,7 +8,7 @@
 
 ```powershell
 $py = ".\.venv\Scripts\python.exe"
-& $py examples/code_review_agent/run_agent.py review --fixture 02_security --sandbox local --dry-run --output-dir out --db-url sqlite+pysqlite:///out/review.db
+& $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out --db-url sqlite+pysqlite:///out/review.db
 ```
 
 生产默认是 `--sandbox container`；本机调试必须显式传入 `--sandbox local`，报告会标记本机隔离与网络无法强制证明。Cube 在无法机器验证受控网络时由 Filter 拒绝。评审运行期间保持网络拒绝策略，不能临时下载依赖或回退宿主执行。
@@ -19,7 +19,7 @@ $py = ".\.venv\Scripts\python.exe"
 & $py examples/code_review_agent/run_agent.py review --diff-file change.diff --sandbox local --dry-run
 & $py examples/code_review_agent/run_agent.py review --repo-path . --sandbox local --dry-run
 & $py examples/code_review_agent/run_agent.py review --files src/app.py --input-root . --sandbox local --dry-run
-& $py examples/code_review_agent/run_agent.py review --fixture 02_security --sandbox local --dry-run
+& $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run
 ```
 
 `--dry-run` 强制使用 fake model，但不会替你把沙箱切换为 local。`--files` 是全文件 snapshot 扫描；`--diff-file` 与 `--repo-path` 只审查变更行。
@@ -52,8 +52,8 @@ TRPC_AGENT_MODEL_NAME=<模型名称>
 
 `evaluate.py --sandbox local` 是 fake model 的离线**公开代理**评测：它为 AC2 提供可重复证据，但**不证明**官方隐藏样本的检出率或误报率。真实模型和 Container 测试分别使用 `real_llm`、`container` 标记，仅在明确提供对应前置条件后运行。
 
-`tests/fixtures/diffs/` 同时保留 8 条小型 smoke diff 和 8 条同名前缀、以
-`_realistic` 结尾的工程化 diff。后者每条包含 60–150 行新增代码、至少两个文件，以及
+`tests/fixtures/diffs/` 提供 8 条以 `_simple` 结尾的小型 diff 和 8 条同名前缀、以
+`_complex` 结尾的工程化 diff。后者每条包含 60–150 行新增代码、至少两个文件，以及
 安全实现、真实风险和易误判干扰项；两组样例均通过相同 E2E 入口校验 JSON、Markdown 和
 SQLite bundle。`evaluate.py` 继续只统计原 8 条公开样例，保持 AC1/AC2 门禁口径稳定。
 
@@ -61,7 +61,7 @@ SQLite bundle。`evaluate.py` 继续只统计原 8 条公开样例，保持 AC1/
 
 | 验收项 | 当前可验证证据 |
 |---|---|
-| AC1 | 8 个公开 smoke fixture 及其 8 个 realistic 配对样例逐条生成 JSON、Markdown 与数据库 bundle。 |
+| AC1 | 8 个公开 simple fixture 及其 8 个 complex 配对样例逐条生成 JSON、Markdown 与数据库 bundle。 |
 | AC2 | 离线公开代理语料计算高危 Recall 与 finding 级 FP；不外推为隐藏样本结论。 |
 | AC3 | SQLite 五表保存 task、run、Filter 事件、finding 与 report，并按 task id 查询。 |
 | AC4 | manifest、Filter 与 sandbox 记录超时、截断、预算和非零退出而不中断报告。 |

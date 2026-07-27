@@ -35,24 +35,27 @@ from run_checks import _findings  # noqa: E402
 
 
 FIXTURE_DIR = PROJECT_ROOT / "tests" / "fixtures" / "diffs"
-SMOKE_FIXTURE_NAMES = (
-    "01_clean",
-    "02_security",
-    "03_async_leak",
-    "04_db_lifecycle",
-    "05_missing_tests",
-    "06_duplicate_finding",
-    "07_sandbox_failure",
-    "08_secret_redaction",
+SIMPLE_FIXTURE_NAMES = (
+    "01_clean_simple",
+    "02_security_simple",
+    "03_async_leak_simple",
+    "04_db_lifecycle_simple",
+    "05_missing_tests_simple",
+    "06_duplicate_finding_simple",
+    "07_sandbox_failure_simple",
+    "08_secret_redaction_simple",
 )
-REALISTIC_FIXTURE_NAMES = tuple(f"{name}_realistic" for name in SMOKE_FIXTURE_NAMES)
-FIXTURE_NAMES = (*SMOKE_FIXTURE_NAMES, *REALISTIC_FIXTURE_NAMES)
+COMPLEX_FIXTURE_NAMES = tuple(
+    f"{name.removesuffix('_simple')}_complex" for name in SIMPLE_FIXTURE_NAMES
+)
+FIXTURE_NAMES = (*SIMPLE_FIXTURE_NAMES, *COMPLEX_FIXTURE_NAMES)
+LEGACY_FIXTURE_NAMES = tuple(name.removesuffix("_simple") for name in SIMPLE_FIXTURE_NAMES)
 
 
 def _fixture_case(name: str) -> str:
-    """返回 smoke/realistic 配对共享的八类场景标识。"""
+    """返回 simple/complex 配对共享的八类场景标识。"""
 
-    return name.removesuffix("_realistic")
+    return name.removesuffix("_simple").removesuffix("_complex")
 
 
 _CLI_FIXTURE_NAMES = tuple(
@@ -183,11 +186,11 @@ def _fixture_payload(name: str) -> FixturePayload:
 
 @pytest.mark.parametrize(
     "fixture_name",
-    REALISTIC_FIXTURE_NAMES,
-    ids=REALISTIC_FIXTURE_NAMES,
+    COMPLEX_FIXTURE_NAMES,
+    ids=COMPLEX_FIXTURE_NAMES,
 )
-def test_realistic_fixtures_have_multi_file_engineering_scale(fixture_name: str) -> None:
-    """验证每条 realistic diff 都有双文件及 60–150 行新增代码，而不是无意义短样例。"""
+def test_complex_fixtures_have_multi_file_engineering_scale(fixture_name: str) -> None:
+    """验证每条 complex diff 都有双文件及 60–150 行新增代码，而不是无意义短样例。"""
 
     fixture_path = FIXTURE_DIR / f"{fixture_name}.diff"
     assert fixture_path.is_file()
@@ -230,15 +233,21 @@ def _run_fixture(name: str, tmp_path: Path) -> tuple[dict[str, Any], SqlReviewSt
     return result.report, store, output_dir
 
 
+def _cli_environment() -> dict[str, str]:
+    """构造不携带模型凭据的 CLI 子进程环境，避免测试触达真实模型配置。"""
+
+    environment = os.environ.copy()
+    for variable in tuple(environment):
+        if "API_KEY" in variable or "TOKEN" in variable or "PASSWORD" in variable:
+            environment.pop(variable)
+    return environment
+
+
 def _run_cli_fixture(name: str, tmp_path: Path) -> tuple[dict[str, Any], SqlReviewStore, Path]:
     """通过公开 CLI 运行真实 local Skill，并返回 canonical 报告、临时 SQLite store 和输出目录。"""
 
     output_dir = tmp_path / "reports"
     database = tmp_path / "review.db"
-    environment = os.environ.copy()
-    for variable in tuple(environment):
-        if "API_KEY" in variable or "TOKEN" in variable or "PASSWORD" in variable:
-            environment.pop(variable)
     completed = subprocess.run(
         [
             sys.executable,
@@ -255,7 +264,7 @@ def _run_cli_fixture(name: str, tmp_path: Path) -> tuple[dict[str, Any], SqlRevi
             str(output_dir),
         ],
         cwd=tmp_path,
-        env=environment,
+        env=_cli_environment(),
         check=False,
         capture_output=True,
         encoding="utf-8",
@@ -269,6 +278,37 @@ def _run_cli_fixture(name: str, tmp_path: Path) -> tuple[dict[str, Any], SqlRevi
     store = SqlReviewStore(_db_url(database))
     store.initialize()
     return report, store, output_dir
+
+
+@pytest.mark.parametrize("fixture_name", LEGACY_FIXTURE_NAMES, ids=LEGACY_FIXTURE_NAMES)
+def test_legacy_fixture_names_are_rejected_by_cli(fixture_name: str, tmp_path: Path) -> None:
+    """验证旧的无后缀 fixture 名称不能作为 CLI 别名继续使用。"""
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "run_agent.py"),
+            "review",
+            "--fixture",
+            fixture_name,
+            "--sandbox",
+            "local",
+            "--dry-run",
+            "--db-url",
+            _db_url(tmp_path / "review.db"),
+            "--output-dir",
+            str(tmp_path / "reports"),
+        ],
+        cwd=tmp_path,
+        env=_cli_environment(),
+        check=False,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=120,
+    )
+
+    assert completed.returncode == 2
 
 
 def _assert_common_fixture_outputs(
@@ -293,8 +333,8 @@ def _assert_common_fixture_outputs(
     return bundle
 
 
-def _assert_realistic_results(report: dict[str, Any], fixture_name: str) -> None:
-    """验证 realistic 样例经任一公开链路后的规则、行号与分桶完全一致。"""
+def _assert_complex_results(report: dict[str, Any], fixture_name: str) -> None:
+    """验证 complex 样例经任一公开链路后的规则、行号与分桶完全一致。"""
 
     fixture_case = _fixture_case(fixture_name)
     actual_results = {
@@ -312,7 +352,7 @@ def test_public_fixtures_generate_expected_reports_and_bundles(
     fixture_name: str,
     tmp_path: Path,
 ) -> None:
-    """验证八组 smoke/realistic fixture 的类别、桶和完整交付契约。"""
+    """验证八组 simple/complex fixture 的类别、桶和完整交付契约。"""
 
     report, store, output_dir = _run_fixture(fixture_name, tmp_path)
     try:
@@ -322,8 +362,8 @@ def test_public_fixtures_generate_expected_reports_and_bundles(
         reviewed_categories = categories | {
             finding["category"] for finding in report["needs_human_review"]
         }
-        if fixture_name in REALISTIC_FIXTURE_NAMES:
-            _assert_realistic_results(report, fixture_name)
+        if fixture_name in COMPLEX_FIXTURE_NAMES:
+            _assert_complex_results(report, fixture_name)
 
         if fixture_case == "01_clean":
             assert report["findings"] == []
@@ -397,8 +437,8 @@ def test_public_fixtures_run_through_cli_with_real_local_skill(
         }
 
         assert report["status"] in {"completed", "completed_with_warnings"}
-        if fixture_name in REALISTIC_FIXTURE_NAMES:
-            _assert_realistic_results(report, fixture_name)
+        if fixture_name in COMPLEX_FIXTURE_NAMES:
+            _assert_complex_results(report, fixture_name)
         if fixture_case == "01_clean":
             assert not report["findings"]
         elif fixture_case == "02_security":

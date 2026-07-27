@@ -58,7 +58,7 @@ def _run_review(tmp_path: Path, *, model_mode: str, dry_run: bool) -> tuple[dict
         str(PROJECT_ROOT / "run_agent.py"),
         "review",
         "--fixture",
-        "02_security",
+        "02_security_simple",
         "--sandbox",
         "local",
         "--model-mode",

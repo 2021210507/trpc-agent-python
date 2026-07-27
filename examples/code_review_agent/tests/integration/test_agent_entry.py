@@ -43,10 +43,10 @@ def test_agent_loads_code_review_skill_and_delegates_to_shared_pipeline() -> Non
     pipeline = _Pipeline()
     agent = create_review_agent(pipeline=pipeline, skill_root=PROJECT_ROOT / "skills")
 
-    result = agent.review(fixture="01_clean")
+    result = agent.review(fixture="01_clean_simple")
 
     assert result["findings"] == [{"file": "src/a.py", "line": 1, "category": "security"}]
-    assert pipeline.calls == [{"fixture": "01_clean"}]
+    assert pipeline.calls == [{"fixture": "01_clean_simple"}]
     assert agent.llm_agent.name == "code_review_agent"
     assert agent.skill_toolset.repository is agent.skill_repository
     assert agent.skill_repository.skill_list() == ["code-review"]
