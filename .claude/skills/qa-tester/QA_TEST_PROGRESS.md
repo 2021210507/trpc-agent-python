@@ -2,7 +2,7 @@
 
 > Total: 46
 >
-> ✅ Pass: 24 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 22
+> ✅ Pass: 36 | ❌ Fail: 0 | ⏭️ Skip: 0 | 🔧 Fix: 0 | ⬜ Pending: 10
 >
 > Evidence must come from the current execution session. Do not record raw secrets, diff content, environment values, or absolute local paths.
 
@@ -37,14 +37,14 @@
 
 | Status | ID | Title | Note |
 |---|---|---|---|
-| ⬜ | C-01 | 01_clean | |
-| ⬜ | C-02 | 02_security | |
-| ⬜ | C-03 | 03_async_leak | |
-| ⬜ | C-04 | 04_db_lifecycle | |
-| ⬜ | C-05 | 05_missing_tests | |
-| ⬜ | C-06 | 06_duplicate_finding | |
-| ⬜ | C-07 | 07_sandbox_failure | |
-| ⬜ | C-08 | 08_secret_redaction | |
+| ✅ | C-01 | 01_clean | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k \"real_local_skill and 01_clean\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", entry=cli_local, findings=0, bundle_domains=5 |
+| ✅ | C-02 | 02_security | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k \"real_local_skill and 02_security\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", entry=cli_local, security_findings_ge=2, severity="high_or_critical" |
+| ✅ | C-03 | 03_async_leak | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k \"real_local_skill and 03_async_leak\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", entry=cli_local, categories="async-errors/resource-leak", resource_bucket=needs_human_review |
+| ✅ | C-04 | 04_db_lifecycle | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k \"real_local_skill and 04_db_lifecycle\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", entry=cli_local, db_lifecycle_ge=2, bundle_domains=5 |
+| ✅ | C-05 | 05_missing_tests | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k \"real_local_skill and 05_missing_tests\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", entry=cli_local, findings=0, human_review_category=missing_tests |
+| ✅ | C-06 | 06_duplicate_finding | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k \"real_local_skill and 06_duplicate_finding\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", entry=cli_local, security_results=1, also_matched_nonempty=true |
+| ✅ | C-07 | 07_sandbox_failure | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k \"public_fixtures_generate and 07_sandbox_failure\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", entry=fake_runtime_injection, status=completed_with_warnings, sandbox_runs=1 |
+| ✅ | C-08 | 08_secret_redaction | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_fixtures_e2e.py -q -k \"real_local_skill and 08_secret_redaction\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="1 passed", entry=cli_local, secret_findings_ge=3, plaintext_hits=0 |
 
 ## D. Sandbox and governance security
 
@@ -54,10 +54,10 @@
 | ✅ | D-02 | Filter short-circuit | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_governance.py -q -k \"deny or human or sentinel\"", exit=0, pytest="3 passed", blocked_requests=5, sandbox_runs=0, plaintext_hits=0 |
 | ⬜ | D-03 | Path and input escape | |
 | ⬜ | D-04 | Environment allowlist | |
-| ⬜ | D-05 | Timeout as data | |
-| ⬜ | D-06 | Output limits | |
+| ✅ | D-05 | Timeout as data | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_sandbox_safety.py -q -k timeout", exit=0, pytest="2 passed", timed_out=true, structured_error=timeout, duration_s=5.5 |
+| ✅ | D-06 | Output limits | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_sandbox_safety.py -q -k \"output or trunc\"", exit=0, pytest="2 passed", output_limit_bytes=1048576, truncated_status=error, duration_s=5.4 |
 | ✅ | D-07 | Runtime network policy | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_governance.py -q -k \"network or cube or local or container\"", exit=0, pytest="2 passed", container_mode=none, cube_action=deny, local_warning=1 |
-| ⬜ | D-08 | All-sink redaction | |
+| ✅ | D-08 | All-sink redaction | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_pipeline.py -q -k \"secret or redact or plaintext\"", exit=0, pytest="1 passed", secret_finding=1, plaintext_hits=0, duration_s=5.5 |
 
 ## E. CLI, persistence, and failure semantics
 
@@ -67,7 +67,7 @@
 | ✅ | E-02 | Zero-Key local dry-run | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k dry_run", exit=0, pytest="1 passed", model_key_required=false, sandbox=local, reports=2, duration_s=16.9 |
 | ✅ | E-03 | Show/list task bundle | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k \"show or list\"", exit=0, pytest="1 passed", bundle_domains=5, sandbox_runs=1, filter_events=1, duration_s=17.0 |
 | ✅ | E-04 | Alternate SQL URL | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k db_url", exit=0, pytest="1 passed", temporary_sqlite=true, business_review_db_created=false, duration_s=16.3 |
-| ✅ | E-05 | Exit codes | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k \"exit or fail_on_severity\"", exit=0, pytest="2 passed", exit_codes="0/1/2", strict_container=2, duration_s=21.7 |
+| ✅ | E-05 | Exit codes | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/e2e/test_cli.py -q -k \"exit or fail_on_severity\" --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="2 passed", exit_codes="0/1/2", invalid_request=2, container_available_exit=0 |
 | ✅ | E-06 | Partial failure continues | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_pipeline.py -q -k \"failure or warning or cleanup\"", exit=0, pytest="1 passed", status=completed_with_warnings, sandbox_runs=1, cleanup_warning=true |
 
 ## F. Offline evaluation gates
@@ -84,7 +84,7 @@
 
 | Status | ID | Title | Note |
 |---|---|---|---|
-| ⬜ | G-01 | Container integration | |
+| ✅ | G-01 | Container integration | command=".\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration/test_sandbox_safety.py -q -m container --basetemp <sanitized-temp> -p no:cacheprovider", exit=0, pytest="2 passed", network_mode=none, sandbox_runs=2, plaintext_hits=0 |
 | ⬜ | G-02 | Real LLM integration | |
 
 ## H. Release regression

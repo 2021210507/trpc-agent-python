@@ -11,6 +11,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -28,6 +31,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from codereview.config import ReviewConfig  # noqa: E402
+from codereview.inputs import FixturePayload  # noqa: E402
+from codereview.pipeline import ReviewPipeline  # noqa: E402
+from codereview.redaction import contains_plaintext_secret  # noqa: E402
 from codereview.sandbox import (  # noqa: E402
     SandboxBudget,
     SandboxBudgetExceeded,
@@ -44,6 +50,8 @@ from codereview.sandbox import (  # noqa: E402
     create_sandbox_runtime,
     stage_code_review_skill,
 )
+from codereview.store import SqlReviewStore  # noqa: E402
+from run_agent import PipelineGovernance  # noqa: E402
 
 SCRIPTS_ROOT = PROJECT_ROOT / "skills" / "code-review" / "scripts"
 if str(SCRIPTS_ROOT) not in sys.path:
@@ -53,6 +61,7 @@ from lib.diff_parser import parse_unified_diff  # noqa: E402
 
 
 SKILL_ROOT = PROJECT_ROOT / "skills" / "code-review"
+FIXTURE_DIR = PROJECT_ROOT / "tests" / "fixtures" / "diffs"
 
 
 class _FakeManager:
@@ -308,6 +317,19 @@ def test_run_spec_and_timeout_capture_remain_bounded() -> None:
 
     assert run_spec.cmd == "python3"
     assert run_spec.args == ["scripts/run_checks.py"]
+    local_run_spec = build_run_spec(
+        StagedSkill(
+            workspace_skill_dir="skills/code-review",
+            entrypoint="skills/code-review/scripts/run_checks.py",
+            script_id="run_checks",
+            sha256="a" * 64,
+        ),
+        config,
+        python_executable="python",
+        use_workspace_root=True,
+    )
+    assert local_run_spec.args == ["skills/code-review/scripts/run_checks.py"]
+    assert local_run_spec.cwd == "."
     assert run_spec.timeout == config.per_run_timeout_seconds
     assert set(run_spec.env) == {"LANG", "LC_ALL", "PYTHONUNBUFFERED"}
     assert capture.timed_out is True
@@ -347,3 +369,77 @@ def test_sdk_sandbox_converts_runtime_failures_to_structured_data(
     assert result["status"] == expected_status
     assert result["error_type"] == expected_error
     assert result["findings"] == []
+
+
+def _docker_daemon_available() -> bool:
+    """仅探测 Docker daemon 可用性；该测试辅助函数不创建容器、镜像或网络。"""
+
+    executable = shutil.which("docker")
+    if executable is None:
+        return False
+    try:
+        result = subprocess.run(
+            [executable, "version", "--format", "{{.Server.Version}}"],
+            check=False,
+            capture_output=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def _container_db_url(path: Path) -> str:
+    """构造真实 container 验收专用的临时 SQLite URL，不写入业务数据库。"""
+
+    return f"sqlite+pysqlite:///{path.as_posix()}"
+
+
+@pytest.mark.container
+@pytest.mark.parametrize("fixture_name", ("02_security", "08_secret_redaction"))
+def test_container_executes_fixture_with_verified_network_none(
+    fixture_name: str,
+    tmp_path: Path,
+) -> None:
+    """在可用 Docker daemon 上执行两条真实 fixture，并验证容器实际网络模式为 none。"""
+
+    if not _docker_daemon_available():
+        pytest.skip("container_runtime_unavailable")
+
+    config = ReviewConfig()
+    selection = create_sandbox_runtime("container")
+    sandbox = SdkSkillSandbox(selection, SKILL_ROOT, config=config)
+    store = SqlReviewStore(_container_db_url(tmp_path / "container-review.db"))
+    pipeline = ReviewPipeline(
+        store=store,
+        governance=PipelineGovernance(
+            selection=selection,
+            config=config,
+            workspace_root=tmp_path / "governance-workspace",
+        ),
+        sandbox=sandbox,
+        output_dir=tmp_path / "reports",
+        config=config,
+        task_id_factory=lambda: f"container-{fixture_name}",
+    )
+    container_client = selection.runtime.manager(None).container
+    try:
+        result = pipeline.run(
+            fixture=FixturePayload(
+                payload_type="diff",
+                diff_text=(FIXTURE_DIR / f"{fixture_name}.diff").read_text(encoding="utf-8"),
+            )
+        )
+        bundle = store.get_task_bundle(result.task_id)
+        container = container_client.container
+
+        assert container is not None
+        assert container.attrs["HostConfig"]["NetworkMode"] == "none"
+        assert bundle is not None
+        assert bundle["sandbox_runs"][0]["status"] == "ok"
+        assert result.json_path.is_file()
+        assert result.markdown_path.is_file()
+        assert not contains_plaintext_secret(json.dumps(bundle, ensure_ascii=False, sort_keys=True))
+    finally:
+        store.close()
+        container_client._cleanup_container()

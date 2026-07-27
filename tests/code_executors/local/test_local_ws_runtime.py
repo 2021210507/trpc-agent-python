@@ -6,6 +6,7 @@
 
 import os
 import shutil
+import stat
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -141,6 +142,19 @@ class TestLocalWorkspaceManager:
         ws = await self.manager.create_workspace("exec-cleanup")
         assert Path(ws.path).exists()
         await self.manager.cleanup("exec-cleanup")
+        assert not Path(ws.path).exists()
+
+    async def test_cleanup_removes_read_only_staged_file(self):
+        """本地 runtime 必须在 finally 清理只读 staged Skill 文件。"""
+
+        ws = await self.manager.create_workspace("exec-read-only")
+        staged_file = Path(ws.path) / "skills" / "code-review" / "SKILL.md"
+        staged_file.parent.mkdir(parents=True)
+        staged_file.write_text("readonly", encoding="utf-8")
+        staged_file.chmod(stat.S_IREAD)
+
+        await self.manager.cleanup("exec-read-only")
+
         assert not Path(ws.path).exists()
         assert "exec-cleanup" not in self.manager.ws_paths
 

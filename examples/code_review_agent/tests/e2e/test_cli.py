@@ -12,9 +12,12 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -78,6 +81,24 @@ def _review_arguments(database: Path, source: Path, output_dir: Path) -> list[st
     ]
 
 
+def _docker_daemon_available() -> bool:
+    """仅探测 Docker daemon 是否可用，使可选 container 用例在缺少前置条件时明确跳过。"""
+
+    executable = shutil.which("docker")
+    if executable is None:
+        return False
+    try:
+        result = subprocess.run(
+            [executable, "version", "--format", "{{.Server.Version}}"],
+            check=False,
+            capture_output=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
 def test_dry_run_db_url_review_show_list_and_init_db_use_one_sqlite_bundle(tmp_path: Path) -> None:
     """验证 review→show→list→init-db 共享临时数据库且不需要模型 Key 或 Docker。"""
 
@@ -124,8 +145,8 @@ def test_fail_on_severity_returns_one_only_at_requested_boundary(tmp_path: Path)
     assert failing.returncode == 1, failing.stderr
 
 
-def test_invalid_and_strict_container_requests_exit_two(tmp_path: Path) -> None:
-    """验证未知参数、互斥输入和未就绪的严格 container 均使用配置错误退出码。"""
+def test_invalid_requests_exit_two_without_container(tmp_path: Path) -> None:
+    """验证互斥输入和禁止命令均在不依赖 Docker 的常规回归中返回退出码 2。"""
 
     source = _write_high_severity_file(tmp_path)
     database = tmp_path / "review.db"
@@ -140,6 +161,19 @@ def test_invalid_and_strict_container_requests_exit_two(tmp_path: Path) -> None:
         _db_url(database),
     )
     forbidden = _run_cli(tmp_path, "review", "--command", "whoami")
+    assert invalid.returncode == 2
+    assert forbidden.returncode == 2
+
+
+@pytest.mark.container
+def test_strict_container_runs_when_daemon_is_available(tmp_path: Path) -> None:
+    """Docker 可用时验证严格 container 成功执行，且 CLI 不会静默回退到 local。"""
+
+    if not _docker_daemon_available():
+        pytest.skip("container_runtime_unavailable")
+
+    source = _write_high_severity_file(tmp_path)
+    database = tmp_path / "review.db"
     strict_container = _run_cli(
         tmp_path,
         "review",
@@ -153,6 +187,5 @@ def test_invalid_and_strict_container_requests_exit_two(tmp_path: Path) -> None:
         "container",
     )
 
-    assert invalid.returncode == 2
-    assert forbidden.returncode == 2
-    assert strict_container.returncode == 2
+    assert strict_container.returncode == 0, strict_container.stderr
+    assert json.loads(strict_container.stdout)["sandbox"] == "container"

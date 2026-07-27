@@ -218,8 +218,6 @@ class SdkSkillSandbox:
                 self.runtime_type == "local" and _local_workspace_path(workspace, ".") is not None
             )
             input_path = "work/inputs/diff.json"
-            if uses_host_local_workspace:
-                input_path = f"{staged.workspace_skill_dir}/work/inputs/diff.json"
             await self._runtime.fs(context).put_files(
                 workspace,
                 [WorkspacePutFileInfo(path=input_path, content=payload)],
@@ -231,6 +229,7 @@ class SdkSkillSandbox:
                     staged,
                     self._config,
                     python_executable=sys.executable if uses_host_local_workspace else "python3",
+                    use_workspace_root=uses_host_local_workspace,
                 ),
                 context,
             )
@@ -244,6 +243,7 @@ class SdkSkillSandbox:
                     workspace,
                     staged,
                     max_output_bytes=self._config.max_output_bytes_per_run,
+                    use_workspace_root=True,
                 )
                 if output_truncated:
                     return _sandbox_result(capture, status="error", truncated=True, error_type="output_truncated")
@@ -341,14 +341,18 @@ def build_run_spec(
     config: ReviewConfig,
     *,
     python_executable: str = "python3",
+    use_workspace_root: bool = False,
 ) -> WorkspaceRunProgramSpec:
-    """构造固定 run_checks argv、白名单环境和每次运行超时，绝不接收 shell 字符串。"""
+    """构造固定 run_checks argv、白名单环境和超时；local 可从 workspace 根目录运行以避免依赖链接。"""
+
+    args = [staged_skill.entrypoint] if use_workspace_root else ["scripts/run_checks.py"]
+    cwd = "." if use_workspace_root else staged_skill.workspace_skill_dir
 
     return WorkspaceRunProgramSpec(
         cmd=python_executable,
-        args=["scripts/run_checks.py"],
+        args=args,
         env=build_sandbox_environment(),
-        cwd=staged_skill.workspace_skill_dir,
+        cwd=cwd,
         timeout=config.per_run_timeout_seconds,
     )
 
@@ -449,12 +453,17 @@ def _local_findings_from_workspace(
     staged_skill: StagedSkill,
     *,
     max_output_bytes: int,
+    use_workspace_root: bool = False,
 ) -> tuple[list[dict[str, Any]], bool]:
-    """读取 local fallback 的受限 findings 文件；超限时不解析内容且返回截断状态。"""
+    """读取 local fallback 的受限 findings 文件；workspace 根模式不依赖 Windows Skill 链接。"""
+
+    output_relative_path = "out/findings.json"
+    if not use_workspace_root:
+        output_relative_path = f"{staged_skill.workspace_skill_dir}/out/findings.json"
 
     output_path = _local_workspace_path(
         workspace,
-        f"{staged_skill.workspace_skill_dir}/out/findings.json",
+        output_relative_path,
     )
     if output_path is None:
         raise ValueError("sandbox_output_missing")

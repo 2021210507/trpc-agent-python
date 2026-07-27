@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -149,6 +151,39 @@ class _TimeoutCleanupFailSandbox:
         raise OSError(r"C:\sensitive-workspace\cleanup-failed")
 
 
+class _WarningSandbox:
+    """返回可持久化的非致命 sandbox 失败结果，用于验证 pipeline 的失败即数据契约。"""
+
+    runtime_type = "fake"
+
+    def __init__(self, *, status: str, error_type: str, truncated: bool) -> None:
+        """保存受控失败形态，不携带代码、路径或敏感原文。"""
+
+        self._status = status
+        self._error_type = error_type
+        self._truncated = truncated
+        self.execute_calls = 0
+
+    def execute(self, **_arguments: Any) -> dict[str, object]:
+        """返回非零或截断的结构化 run 摘要，供 pipeline 落库和生成 warning。"""
+
+        self.execute_calls += 1
+        return {
+            "status": self._status,
+            "exit_code": 9 if self._status == "failed" else 0,
+            "timed_out": False,
+            "truncated": self._truncated,
+            "stdout_excerpt": "",
+            "stderr_excerpt": "",
+            "error_type": self._error_type,
+            "duration_ms": 1,
+            "findings": [],
+        }
+
+    def cleanup(self, **_arguments: Any) -> None:
+        """fake sandbox 不创建 workspace，因此 cleanup 是无副作用操作。"""
+
+
 def _db_url(path: Path) -> str:
     """返回隔离测试数据库的 SQLAlchemy URL。"""
 
@@ -227,6 +262,54 @@ def test_pipeline_converts_timeout_and_cleanup_failure_to_warnings(tmp_path: Pat
     assert "C:\\sensitive-workspace" not in serialized_bundle
     assert result.json_path.exists()
     assert result.markdown_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("status", "error_type", "truncated", "warning_code"),
+    (
+        ("failed", "nonzero_exit", False, "sandbox_failed"),
+        ("error", "output_truncated", True, "sandbox_output_truncated"),
+    ),
+)
+def test_pipeline_persists_nonzero_and_truncated_sandbox_warnings(
+    tmp_path: Path,
+    status: str,
+    error_type: str,
+    truncated: bool,
+    warning_code: str,
+) -> None:
+    """验证非零与截断均落入 sandbox run、报告 warning 和 SQLite bundle，且任务仍可交付。"""
+
+    sandbox = _WarningSandbox(status=status, error_type=error_type, truncated=truncated)
+    store = SqlReviewStore(_db_url(tmp_path / "review.db"))
+    pipeline = ReviewPipeline(
+        store=store,
+        governance=_AllowGovernance(),
+        sandbox=sandbox,
+        output_dir=tmp_path / "reports",
+        task_id_factory=lambda: f"pipeline-task-{error_type}",
+    )
+    try:
+        result = pipeline.run(
+            fixture=FixturePayload(
+                payload_type="files",
+                file_contents={"src/service.py": "def run():\n    return None\n"},
+            )
+        )
+        bundle = store.get_task_bundle(result.task_id)
+
+        assert result.status == "completed_with_warnings"
+        assert sandbox.execute_calls == 1
+        assert bundle is not None
+        assert bundle["sandbox_runs"][0]["status"] == status
+        assert bundle["sandbox_runs"][0]["error_type"] == error_type
+        assert bundle["sandbox_runs"][0]["truncated"] is truncated
+        assert warning_code in {warning["code"] for warning in result.report["warnings"]}
+        assert result.json_path.is_file()
+        assert result.markdown_path.is_file()
+        assert "C:\\" not in json.dumps(bundle, ensure_ascii=False, sort_keys=True)
+    finally:
+        store.close()
 
 
 def test_pipeline_short_circuits_denied_sandbox_execution(tmp_path: Path) -> None:
