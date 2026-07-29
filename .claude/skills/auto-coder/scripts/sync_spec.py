@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Split this repository's seven-chapter DEV_SPEC into generated references.
+"""Split the code-review Agent's seven-chapter DEV_SPEC into generated references.
 
 Usage:
     python .github/skills/auto-coder/scripts/sync_spec.py [--force]
@@ -66,7 +66,7 @@ def detect_chapters(content: str) -> List[Chapter]:
 def sync(force: bool = False):
     skill_dir = Path(__file__).parent.parent          # auto-coder/
     repo_root = skill_dir.parent.parent.parent        # project root
-    dev_spec  = repo_root / "DEV_SPEC.md"
+    dev_spec = repo_root / "examples" / "skills_code_review_agent" / "DEV_SPEC.md"
     specs_dir = skill_dir / "references"
     hash_file = skill_dir / ".spec_hash"
 

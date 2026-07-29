@@ -25,7 +25,7 @@
 ### 5.2 目录树（交付清单，任务完成的文件级依据）
 
 ```
-examples/code_review_agent/
+examples/skills_code_review_agent/
 ├── README.md
 ├── run_agent.py
 ├── agent/

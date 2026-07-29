@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from examples.code_review_agent.codereview.config import ReviewConfig
+from examples.skills_code_review_agent.codereview.config import ReviewConfig
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

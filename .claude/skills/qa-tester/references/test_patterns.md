@@ -8,14 +8,14 @@ Prefer the repository venv without shell activation:
 
 ```powershell
 $py = ".\.venv\Scripts\python.exe"
-& $py -m pytest examples/code_review_agent/tests/unit/test_config.py -q
+& $py -m pytest examples/skills_code_review_agent/tests/unit/test_config.py -q
 ```
 
 POSIX equivalent:
 
 ```bash
 py=.venv/bin/python
-"$py" -m pytest examples/code_review_agent/tests/unit/test_config.py -q
+"$py" -m pytest examples/skills_code_review_agent/tests/unit/test_config.py -q
 ```
 
 Do not install missing dependencies during QA unless the user asks.
@@ -131,7 +131,7 @@ Assert rejection occurs before target content is read or staged. Never use a rea
 Run the public proxy gate with fake model and explicit local sandbox:
 
 ```powershell
-.\.venv\Scripts\python.exe examples/code_review_agent/evaluate.py --sandbox local
+.\.venv\Scripts\python.exe examples/skills_code_review_agent/evaluate.py --sandbox local
 ```
 
 Verify `eval_summary.json` contains:
@@ -149,8 +149,8 @@ Default evaluation must not write the business `review.db`; use `--write-db` onl
 ## Optional integrations
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration -q -m container
-.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/integration -q -m real_llm
+.\.venv\Scripts\python.exe -m pytest examples/skills_code_review_agent/tests/integration -q -m container
+.\.venv\Scripts\python.exe -m pytest examples/skills_code_review_agent/tests/integration -q -m real_llm
 ```
 
 Skip only when the corresponding prerequisite is absent. Never reveal Key prefixes or values in notes.

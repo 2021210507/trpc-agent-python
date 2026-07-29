@@ -8,6 +8,6 @@
 
 """Application layer for the automatic code-review Agent example."""
 
-from examples.code_review_agent.codereview.config import ReviewConfig
+from examples.skills_code_review_agent.codereview.config import ReviewConfig
 
 __all__ = ["ReviewConfig"]

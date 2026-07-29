@@ -1,17 +1,17 @@
 ---
 name: auto-coder
-description: Implement the next task from this repository's DEV_SPEC.md for the automatic code-review Agent under examples/code_review_agent. Syncs the seven spec chapters, selects an A1-E2 schedule item, implements it test-first, validates its acceptance criteria, and updates progress without committing unless explicitly authorized. Use when the user asks for "auto code", "自动开发", "自动写代码", "auto dev", "一键开发", "autopilot", to continue the DEV_SPEC schedule, or to implement a specific task such as "auto code A3".
+description: Implement the next task from examples/skills_code_review_agent/DEV_SPEC.md for the automatic code-review Agent. Syncs the seven spec chapters, selects an A1-E2 schedule item, implements it test-first, validates its acceptance criteria, and updates progress without committing unless explicitly authorized. Use when the user asks for "auto code", "自动开发", "自动写代码", "auto dev", "一键开发", "autopilot", to continue the DEV_SPEC schedule, or to implement a specific task such as "auto code A3".
 ---
 
 # Auto Coder
 
-Implement one `DEV_SPEC.md` schedule item per cycle:
+Implement one `examples/skills_code_review_agent/DEV_SPEC.md` schedule item per cycle:
 
 ```text
 Sync spec → select task → read required chapters → inspect code → implement + test → verify acceptance → update progress
 ```
 
-Treat `DEV_SPEC.md` as the single source of truth. Generated files under `references/` are navigation aids only.
+Treat `examples/skills_code_review_agent/DEV_SPEC.md` as the single source of truth. Generated files under `references/` are navigation aids only.
 
 ## Invocation
 
@@ -30,7 +30,7 @@ Use the active Python interpreter:
 python .github/skills/auto-coder/scripts/sync_spec.py
 ```
 
-If Python is unavailable, read `DEV_SPEC.md` directly. Never continue from stale generated references.
+If Python is unavailable, read `examples/skills_code_review_agent/DEV_SPEC.md` directly. Never continue from stale generated references.
 
 Read every cycle:
 
@@ -87,7 +87,7 @@ Apply these repository rules.
 
 ### Project boundary
 
-- Deliver under `examples/code_review_agent/` unless the task explicitly changes shared SDK code.
+- Deliver under `examples/skills_code_review_agent/` unless the task explicitly changes shared SDK code.
 - Follow the directory tree in DEV_SPEC §5.2.
 - Support Python `>=3.10`; do not use Python 3.12-only syntax.
 - Keep `skills/code-review/scripts/` on the Python standard library only.
@@ -141,7 +141,7 @@ Apply these repository rules.
 
 ### Testing
 
-- Put all test code, support code, and test data under `examples/code_review_agent/tests/`; do not create a top-level `fixtures/`.
+- Put all test code, support code, and test data under `examples/skills_code_review_agent/tests/`; do not create a top-level `fixtures/`.
 - Put deterministic single-module tests in `tests/unit/`, module/adapter collaboration tests in `tests/integration/`, and complete CLI/evaluate flows in `tests/e2e/`.
 - Keep fixture data under `tests/fixtures/` and shared fakes/builders/assertions under `tests/support/`. Fixtures contain data, not executable tests.
 - Unit tests must not require Docker, network, or a real model key. Missing mandatory fixture data is a failure, not a skip.
@@ -154,13 +154,13 @@ Apply these repository rules.
 Run the test named in the task row, then relevant regressions. Use the repository interpreter, for example:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests/unit/test_diff_parser.py -q
+.\.venv\Scripts\python.exe -m pytest examples/skills_code_review_agent/tests/unit/test_diff_parser.py -q
 ```
 
 For a completed vertical slice, also run:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests -q -m "not container and not real_llm"
+.\.venv\Scripts\python.exe -m pytest examples/skills_code_review_agent/tests -q -m "not container and not real_llm"
 ```
 
 Allow at most three focused diagnose/fix/retest rounds. Do not weaken assertions, hide failures with broad exception handling, or mark a task complete because a test was skipped.
@@ -176,7 +176,7 @@ Before completion, verify:
 
 Only after acceptance passes:
 
-1. Change the target task marker in `DEV_SPEC.md` from `[ ]`/`[~]` to `[x]`.
+1. Change the target task marker in `examples/skills_code_review_agent/DEV_SPEC.md` from `[ ]`/`[~]` to `[x]`.
 2. Do not rewrite its acceptance criteria.
 3. Re-sync:
 

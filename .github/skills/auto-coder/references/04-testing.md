@@ -4,7 +4,7 @@
 
 ### 4.1 目录与框架
 
-- pytest；所有测试代码、测试辅助和测试数据统一放在 `examples/code_review_agent/tests/`
+- pytest；所有测试代码、测试辅助和测试数据统一放在 `examples/skills_code_review_agent/tests/`
 - `tests/unit/`：单个确定性模块接口测试；不依赖 Docker、API Key 或网络，外部依赖使用 fake 或临时本地替代
 - `tests/integration/`：多个模块或本地适配器的协作测试，包括 SQLite、Filter 链、Skill 脚本、沙箱和 pipeline
 - `tests/e2e/`：从 CLI / evaluate 输入到 JSON、Markdown、数据库 bundle、指标和退出码的完整闭环
@@ -21,25 +21,25 @@
 - 模型：fake model 走与 real 完全相同的调用路径，返回固定模板
 - 数据库：单测用 `sqlite:///:memory:` 或 tmp_path 下临时文件
 
-### 4.3 公开 fixture（8 条 smoke + 8 条 realistic，AC1 最低硬性交付仍为原 8 条）
+### 4.3 公开 fixture（8 条 simple + 8 条 complex，AC1 最低硬性交付仍为 simple 8 条）
 
 数据位于 `tests/fixtures/diffs/`，由 `tests/e2e/test_fixtures_e2e.py` 通过公开入口执行：
 
 | fixture | 内容 | 预期 |
 |---------|------|------|
-| 01_clean | 无问题 diff | 0 findings，报告正常生成 |
-| 02_security | SQL 注入 f-string + subprocess shell=True | ≥2 条 security findings（high/critical） |
-| 03_async_leak | async 内 time.sleep + ClientSession 未关 | async-errors + resource-leak 各 ≥1 |
-| 04_db_lifecycle | 连接未 close、事务未 commit | ≥1 条 db-lifecycle |
-| 05_missing_tests | 改源码不改测试 | needs_human_review 含 missing-tests 项，findings 桶为空该类 |
-| 06_duplicate_finding | 同文件同行同类多规则命中 | 去重后 1 条，extra.also_matched 非空 |
-| 07_sandbox_failure | 注入沙箱失败（--inject-sandbox-failure 或 fake runtime） | 0 findings + warnings 记录 + status=completed_with_warnings，报告照常渲染 |
-| 08_secret_redaction | 字符串/配置中含 AWS Key、GitHub PAT、password，并含注释占位符对照 | 真实格式产生 secrets finding；占位符降噪；报告、DB、日志和沙箱摘要字节级无明文 |
+| 01_clean_simple | 无问题 diff | 0 findings，报告正常生成 |
+| 02_security_simple | SQL 注入 f-string + subprocess shell=True | ≥2 条 security findings（high/critical） |
+| 03_async_leak_simple | async 内 time.sleep + ClientSession 未关 | async-errors + resource-leak 各 ≥1 |
+| 04_db_lifecycle_simple | 连接未 close、事务未 commit | ≥1 条 db-lifecycle |
+| 05_missing_tests_simple | 改源码不改测试 | needs_human_review 含 missing-tests 项，findings 桶为空该类 |
+| 06_duplicate_finding_simple | 同文件同行同类多规则命中 | 去重后 1 条，extra.also_matched 非空 |
+| 07_sandbox_failure_simple | 注入沙箱失败（--inject-sandbox-failure 或 fake runtime） | 0 findings + warnings 记录 + status=completed_with_warnings，报告照常渲染 |
+| 08_secret_redaction_simple | 字符串/配置中含 AWS Key、GitHub PAT、password，并含注释占位符对照 | 真实格式产生 secrets finding；占位符降噪；报告、DB、日志和沙箱摘要字节级无明文 |
 
-每条 smoke fixture 另配一条同名前缀、`_realistic` 后缀的真实工程样例。realistic diff 每条包含
+每条 `_simple` fixture 另配一条同名前缀、`_complex` 后缀的真实工程样例。complex diff 每条包含
 60–150 行新增代码、至少两个文件，并混合正常实现、真实风险和关键词干扰项；测试必须继续验证精确类别、
-分桶、去重、JSON/Markdown/SQLite bundle 以及明文泄漏扫描。原 8 条 smoke fixture 保留，用于快速定位
-基础链路回归；`evaluate.py` 的 AC1/AC2 公开代理口径仍只统计原 8 条，避免改变既有硬门禁分母。
+分桶、去重、JSON/Markdown/SQLite bundle 以及明文泄漏扫描。8 条 simple fixture 用于快速定位基础链路回归；
+`evaluate.py` 的 AC1/AC2 公开代理口径仍只统计 simple 8 条，避免改变既有硬门禁分母。
 
 ### 4.4 评测语料与 CI 硬门禁（AC2 代理）
 
@@ -62,7 +62,7 @@
 | 高危问题 Recall（critical/high，代理语料） | ≥ 0.80 | AC2 代理 |
 | findings 桶 finding-level 误报占比 `FP/(TP+FP)` | ≤ 0.15 | AC2 代理 |
 | 脱敏检出率 | ≥ 0.95 | AC5 |
-| fake model 完整评测流程墙钟时间 | ≤ 120 s | AC6 |
+| 8 条 public fixture 的独立 fake Agent 审查墙钟时间 | 每条 ≤ 120 s | AC6 |
 | Precision / Recall / F1 | 输出到摘要；F1 **不设单独硬阈值**（由上两项 Recall/FP 约束即可，避免三重冲突） | 观测指标 |
 
 **明确不是硬门禁的**：
@@ -77,7 +77,7 @@
 
 | 路径 | sandbox | model | 用途 |
 |------|---------|-------|------|
-| `evaluate.py`（普通 CI / 本地门禁，默认） | **显式 `local`** | fake | ≤120s 硬门禁统一测量口径；摘要记录 runtime/OS/是否有 Docker |
+| `evaluate.py`（普通 CI / 本地门禁，默认） | **显式 `local`** | fake | 8 条 fixture 各自经 Agent+Skill 独立运行且每条 ≤120s；聚合耗时仅观测；摘要记录 runtime/OS/是否有 Docker |
 | `evaluate.py --sandbox container` | container | fake | 额外结果；Docker 可用时跑，**不与 local 基准耗时直接比较** |
 | `run_agent.py review`（生产默认） | **严格 container** | fake\|real\|off | 无 Docker 直接报错；不受 evaluate 默认影响 |
 | pytest 单元 / pipeline 单测 | 注入 fake workspace | fake/off | 测编排与落库，不冒充「脚本真执行」 |
@@ -86,10 +86,10 @@
 硬约束：
 
 1. **evaluate 默认 local 必须是显式选择**（代码与文档都写成 `--sandbox local`），不是 `--dry-run` 偷偷换沙箱——CLI 的 dry-run 仍只代表 fake model，沙箱语义不变。
-2. **evaluate 默认路径禁止用 fake workspace**：必须真跑仓库自带的可信 Skill 脚本 + 固定 fixture，否则无法证明脚本执行过；仅允许执行本仓库 `skills/code-review/scripts/` 与 fixtures，禁止用户自定义命令混入门禁路径。
+2. **evaluate 默认路径禁止用 fake workspace**：8 条 fixture 必须各自以独立 `user-query` 任务真跑 Agent 的 `skill_load → skill_run` 与仓库自带可信 Skill 脚本，并各自验证 JSON、Markdown、SQLite 和单条时延；公开代理语料可直跑可信 Skill 脚本计算规则指标。仅允许执行本仓库 `skills/code-review/scripts/` 与 fixtures，禁止用户自定义命令混入门禁路径。
 3. local 模式下 Filter 仍运行，并把「隔离与网络策略不可强制证明」降级告警写入 warnings；cube 默认拒绝的原因是当前 SDK 无法提供具体实例无出口/受控网关的可验证证明，而不是 `network_allowed=True` 字段本身。container 集成测试必须验证实际生效的 `network_mode=none`。
 
-**与 pytest 的分工**：pytest 负责 unit、integration 与 fixture 驱动的 e2e；`evaluate.py` 负责跨 fixture 的聚合指标门禁。CI 建议顺序：`pytest examples/code_review_agent/tests/ -q`（跳过 container/real_llm）→ `python examples/code_review_agent/evaluate.py --sandbox local`（model=fake + sandbox=local）。
+**与 pytest 的分工**：pytest 负责 unit、integration 与 fixture 驱动的 e2e；`evaluate.py` 负责跨 fixture 的聚合指标门禁。CI 建议顺序：`pytest examples/skills_code_review_agent/tests/ -q`（跳过 container/real_llm）→ `python examples/skills_code_review_agent/evaluate.py --sandbox local`（model=fake + sandbox=local）。
 
 ### 4.5 关键安全测试
 

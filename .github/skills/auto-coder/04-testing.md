@@ -4,7 +4,7 @@
 
 ### 4.1 目录与框架
 
-- pytest；所有测试代码、测试辅助和测试数据统一放在 `examples/code_review_agent/tests/`
+- pytest；所有测试代码、测试辅助和测试数据统一放在 `examples/skills_code_review_agent/tests/`
 - `tests/unit/`：单个确定性模块接口测试；不依赖 Docker、API Key 或网络，外部依赖使用 fake 或临时本地替代
 - `tests/integration/`：多个模块或本地适配器的协作测试，包括 SQLite、Filter 链、Skill 脚本、沙箱和 pipeline
 - `tests/e2e/`：从 CLI / evaluate 输入到 JSON、Markdown、数据库 bundle、指标和退出码的完整闭环
@@ -84,7 +84,7 @@
 2. **evaluate 默认路径禁止用 fake workspace**：必须真跑仓库自带的可信 Skill 脚本 + 固定 fixture，否则无法证明脚本执行过；仅允许执行本仓库 `skills/code-review/scripts/` 与 fixtures，禁止用户自定义命令混入门禁路径。
 3. local 模式下 Filter 仍运行，并把「隔离与网络策略不可强制证明」降级告警写入 warnings；cube 默认拒绝的原因是当前 SDK 无法提供具体实例无出口/受控网关的可验证证明，而不是 `network_allowed=True` 字段本身。container 集成测试必须验证实际生效的 `network_mode=none`。
 
-**与 pytest 的分工**：pytest 负责 unit、integration 与 fixture 驱动的 e2e；`evaluate.py` 负责跨 fixture 的聚合指标门禁。CI 建议顺序：`pytest examples/code_review_agent/tests/ -q`（跳过 container/real_llm）→ `python examples/code_review_agent/evaluate.py --sandbox local`（model=fake + sandbox=local）。
+**与 pytest 的分工**：pytest 负责 unit、integration 与 fixture 驱动的 e2e；`evaluate.py` 负责跨 fixture 的聚合指标门禁。CI 建议顺序：`pytest examples/skills_code_review_agent/tests/ -q`（跳过 container/real_llm）→ `python examples/skills_code_review_agent/evaluate.py --sandbox local`（model=fake + sandbox=local）。
 
 ### 4.5 关键安全测试
 

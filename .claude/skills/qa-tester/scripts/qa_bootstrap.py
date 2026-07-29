@@ -13,8 +13,8 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-SPEC = REPO_ROOT / "DEV_SPEC.md"
-EXAMPLE = REPO_ROOT / "examples" / "code_review_agent"
+EXAMPLE = REPO_ROOT / "examples" / "skills_code_review_agent"
+SPEC = EXAMPLE / "DEV_SPEC.md"
 AUTO_REFS = REPO_ROOT / ".github" / "skills" / "auto-coder" / "references"
 SPEC_HASH = REPO_ROOT / ".github" / "skills" / "auto-coder" / ".spec_hash"
 PROGRESS = REPO_ROOT / ".github" / "skills" / "qa-tester" / "QA_TEST_PROGRESS.md"

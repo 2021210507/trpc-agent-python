@@ -56,7 +56,7 @@ diff 解析必须覆盖边界：rename、binary、CRLF、`\ No newline at end of
 
 ### 2.2 CR Skill（R1）
 
-`examples/code_review_agent/skills/code-review/`（自包容，随示例目录整体拷贝可用）：
+`examples/skills_code_review_agent/skills/code-review/`（自包容，随示例目录整体拷贝可用）：
 
 - `SKILL.md`：YAML frontmatter（name=code-review）+ 用法说明 + 工作流描述
 - `rules/`：6 类规则文档（security / async-errors / resource-leak / missing-tests / secrets / db-lifecycle），每篇含规则清单、rule_id、severity、置信度、`requires_full_file` 标记、示例
@@ -220,16 +220,40 @@ Telemetry span 属性采用白名单：只允许脱敏 task id、状态、阶段
 
 ### 2.11 CLI 与运行模式
 
-`run_agent.py` 四子命令：
+`run_agent.py` 五个子命令：
 
-- `review --diff-file|--repo-path|--files|--fixture [--dry-run] [--sandbox container|cube|local] [--model-mode fake|real|off] [--fail-on-severity high|critical] [--db-url URL] [--out DIR]`
-- `show --task-id <ID>`：输出全链路 bundle
+- `review --diff-file|--repo-path|--files|--fixture [--dry-run] [--sandbox container|cube|local] [--model-mode fake|real|off] [--trace] [--log-level DEBUG|INFO|WARNING] [--fail-on-severity high|critical] [--db-url URL] [--output-dir DIR]`：直接调用唯一 `ReviewPipeline`，用于 CI 和确定性自动化。
+- `user-query "<natural-language review intent>" --diff-file|--repo-path|--files|--fixture [--dry-run] [--sandbox container|cube|local] [--model-mode fake|real|off] [--trace] [--log-level DEBUG|INFO|WARNING] [--fail-on-severity high|critical] [--db-url URL] [--output-dir DIR]`：始终经 SDK `LlmAgent + SkillToolSet` 触发受控 Skill 链；自然语言仅表达意图，四种输入必须由结构化参数显式指定。
+- `show <task_id>`：输出全链路 bundle
 - `list`：列出历史任务
 - `init-db`：幂等初始化
 
-`--dry-run` = fake model（固定模板走与 real 完全相同的 LlmAgent+Runner 链路），**不**切换 sandbox。无 Docker 时必须同时显式传 `--sandbox local`，否则严格 container 默认会直接报错。零 Key + 无 Docker 的推荐命令：`python run_agent.py review --fixture 01_clean --dry-run --sandbox local`。pytest 单测注入 fake runtime 是第三条路径，不冒充 CLI dry-run。
+`--dry-run` = fake model（固定模板走与 real 完全相同的 LlmAgent+Runner 链路），**不**切换 sandbox。无 Docker 时必须同时显式传 `--sandbox local`，否则严格 container 默认会直接报错。零 Key + 无 Docker 的推荐命令：`python run_agent.py review --fixture 01_clean_simple --dry-run --sandbox local`。pytest 单测注入 fake runtime 是第三条路径，不冒充 CLI dry-run。
 
 四种输入由互斥参数组强制只能选择一个。本期不提供 `--command`、`--run-tests` 或 `--llm-denoise`；任意命令和目标仓库测试不得通过隐藏参数进入当前实现。
+
+`review` 直接调用唯一 `ReviewPipeline`；`user-query` 是唯一公开的 Agent 入口，SDK
+`LlmAgent + SkillToolSet` 必须产生可观察的 `skill_load("code-review") → skill_run(...)`
+工具调用，再由受控 `skill_run` 适配器委托同一 pipeline，不能产生第二套检测或持久化逻辑。
+宿主在创建 Agent 前验证四选一结构化输入、路径、大小、编码和 diff 格式；不得让模型从自由文本推测
+任意文件路径、命令、环境变量或未登记脚本。无效输入以退出码 2 拒绝，且不调用模型、Filter 或沙箱。
+`skill_run` 对模型只暴露一次性 review request id；固定 Skill、script_id、argv、输入/输出路径、
+环境、超时和输出限额必须由宿主结合 manifest 构造，原始 diff、宿主路径和命令字符串不得进入
+模型上下文。未先成功 `skill_load`、Filter 非 ALLOW 或 request id 无效时，`skill_run` 必须零
+沙箱副作用。成功的 CLI JSON 必须包含 `task_id`、状态、实际 sandbox、入口类型以及
+`report_files.json` / `report_files.markdown` 的完整输出位置，方便人工和 CI 直接定位产物；路径
+只输出到当前终端，绝不写入 report、数据库、Telemetry 或日志。维护者的完整 PowerShell 命令、
+Docker 前置检查、16 个 fixture、模型模式和故障排查统一见
+`examples/skills_code_review_agent/OPERATIONS.md`；真实模型的三项白名单变量由该目录 `.env` 读取，
+runtime 类型、网络策略和输出目录必须显式通过 CLI 参数设置，不得藏在 `.env`。
+
+`--trace` 是显式终端诊断模式：以 stderr JSON Lines 流式显示受控 query 解析、SDK
+`skill_load` / `skill_run`、Filter、sandbox、Pipeline 和持久化状态；stdout 仍只输出最终 CLI JSON。
+trace 字段只能包含固定事件名、安全枚举、计数、状态和布尔值，禁止输出模型私有推理、原始 query/diff、
+代码/evidence、request id、命令、环境变量值和宿主路径；trace 不写入报告、数据库或 Telemetry。默认 `INFO`
+日志也仅写 stderr，显示阶段、计数、固定状态码、耗时、实际 container ID 与终端可见的报告位置；`DEBUG`
+可额外显示仓库相对文件路径、script_id 和已脱敏输出摘要。所有日志级别均禁止原始 diff、代码、evidence、
+工具完整参数、workspace/request ID、环境变量和凭据。SDK 原始 INFO 固定降为 WARNING，避免暴露源码绝对路径和 workspace 标识。
 
 **CLI 退出码约定**（`review` 子命令；`show`/`list`/`init-db` 成功 0、致命错误 2）：
 

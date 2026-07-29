@@ -27,7 +27,7 @@ docker version --format '{{.Client.Version}} / {{.Server.Version}}'
 ### 依赖策略
 
 本项目没有为 `code_review_agent` 新增专属 pip 包，**不要**创建或安装
-`examples/code_review_agent/requirements.txt`。仓库根 [`pyproject.toml`](../../pyproject.toml)
+`examples/skills_code_review_agent/requirements.txt`。仓库根 [`pyproject.toml`](../../pyproject.toml)
 是包依赖的规范源，根 `requirements.txt` / `requirements-test.txt` 是仓库已有的安装清单。
 新建维护环境推荐安装根项目及开发工具：
 
@@ -54,11 +54,11 @@ Python requirements 文件，也不得在评审任务执行期间在线安装依
 仅首次创建真实模型配置时，复制模板后填入自己的值；已有 `.env` 不要覆盖：
 
 ```powershell
-Copy-Item examples/code_review_agent/.env.example examples/code_review_agent/.env
+Copy-Item examples/skills_code_review_agent/.env.example examples/skills_code_review_agent/.env
 ```
 
 ```bash
-cp examples/code_review_agent/.env.example examples/code_review_agent/.env
+cp examples/skills_code_review_agent/.env.example examples/skills_code_review_agent/.env
 ```
 
 `.env` 只允许 `TRPC_AGENT_API_KEY`、`TRPC_AGENT_BASE_URL`、`TRPC_AGENT_MODEL_NAME`。
@@ -100,7 +100,7 @@ manifest 决定。终端 JSON 中 `skill_tools=["skill_load","skill_run"]` 是�
 trace 只会把下列脱敏 JSON Lines 写到 stderr，stdout 保持一条最终 JSON，便于 CI 使用：
 
 ```powershell
-& $py examples/code_review_agent/run_agent.py user-query `
+& $py examples/skills_code_review_agent/run_agent.py user-query `
   "请使用 code-review Skill 审查这个安全样例" `
   --fixture 02_security_simple `
   --trace `
@@ -140,8 +140,8 @@ stdout。任何级别都不会打印原始 diff、代码、evidence、工具完�
 ### Unified diff / PR patch
 
 ```powershell
-& $py examples/code_review_agent/run_agent.py review `
-  --diff-file examples/code_review_agent/tests/fixtures/diffs/02_security_complex.diff `
+& $py examples/skills_code_review_agent/run_agent.py review `
+  --diff-file examples/skills_code_review_agent/tests/fixtures/diffs/02_security_complex.diff `
   --sandbox local `
   --dry-run `
   --output-dir out/review_diff `
@@ -149,13 +149,13 @@ stdout。任何级别都不会打印原始 diff、代码、evidence、工具完�
 ```
 
 ```bash
-"$py" examples/code_review_agent/run_agent.py review --diff-file examples/code_review_agent/tests/fixtures/diffs/02_security_complex.diff --sandbox local --dry-run --output-dir out/review_diff --db-url sqlite+pysqlite:///out/review_diff/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --diff-file examples/skills_code_review_agent/tests/fixtures/diffs/02_security_complex.diff --sandbox local --dry-run --output-dir out/review_diff --db-url sqlite+pysqlite:///out/review_diff/review.db
 ```
 
 ### 当前 Git 工作区变更
 
 ```powershell
-& $py examples/code_review_agent/run_agent.py review `
+& $py examples/skills_code_review_agent/run_agent.py review `
   --repo-path . `
   --sandbox local `
   --dry-run `
@@ -164,14 +164,14 @@ stdout。任何级别都不会打印原始 diff、代码、evidence、工具完�
 ```
 
 ```bash
-"$py" examples/code_review_agent/run_agent.py review --repo-path . --sandbox local --dry-run --output-dir out/review_repo --db-url sqlite+pysqlite:///out/review_repo/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --repo-path . --sandbox local --dry-run --output-dir out/review_repo --db-url sqlite+pysqlite:///out/review_repo/review.db
 ```
 
 ### 指定文件的全文件 snapshot 扫描
 
 ```powershell
-& $py examples/code_review_agent/run_agent.py review `
-  --files examples/code_review_agent/codereview/report.py `
+& $py examples/skills_code_review_agent/run_agent.py review `
+  --files examples/skills_code_review_agent/codereview/report.py `
   --input-root . `
   --sandbox local `
   --dry-run `
@@ -180,13 +180,13 @@ stdout。任何级别都不会打印原始 diff、代码、evidence、工具完�
 ```
 
 ```bash
-"$py" examples/code_review_agent/run_agent.py review --files examples/code_review_agent/codereview/report.py --input-root . --sandbox local --dry-run --output-dir out/review_files --db-url sqlite+pysqlite:///out/review_files/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --files examples/skills_code_review_agent/codereview/report.py --input-root . --sandbox local --dry-run --output-dir out/review_files --db-url sqlite+pysqlite:///out/review_files/review.db
 ```
 
 ### 受控 fixture 输入
 
 ```powershell
-& $py examples/code_review_agent/run_agent.py review `
+& $py examples/skills_code_review_agent/run_agent.py review `
   --fixture 02_security_simple `
   --sandbox local `
   --dry-run `
@@ -195,24 +195,24 @@ stdout。任何级别都不会打印原始 diff、代码、evidence、工具完�
 ```
 
 ```bash
-"$py" examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_fixture --db-url sqlite+pysqlite:///out/review_fixture/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_fixture --db-url sqlite+pysqlite:///out/review_fixture/review.db
 ```
 
 要通过 SDK Agent 审查任一种输入，使用 `user-query`；自然语言只表达意图，输入路径或 fixture 必须显式传参：
 
 ```powershell
-& $py examples/code_review_agent/run_agent.py user-query "请审查这个安全样例" --fixture 02_security_simple --sandbox local --dry-run --log-level INFO --output-dir out/review_fixture_agent --db-url sqlite+pysqlite:///out/review_fixture_agent/review.db
+& $py examples/skills_code_review_agent/run_agent.py user-query "请审查这个安全样例" --fixture 02_security_simple --sandbox local --dry-run --log-level INFO --output-dir out/review_fixture_agent --db-url sqlite+pysqlite:///out/review_fixture_agent/review.db
 ```
 
 ```bash
-"$py" examples/code_review_agent/run_agent.py user-query "Review this security fixture" --fixture 02_security_simple --sandbox local --dry-run --log-level INFO --output-dir out/review_fixture_agent --db-url sqlite+pysqlite:///out/review_fixture_agent/review.db
+"$py" examples/skills_code_review_agent/run_agent.py user-query "Review this security fixture" --fixture 02_security_simple --sandbox local --dry-run --log-level INFO --output-dir out/review_fixture_agent --db-url sqlite+pysqlite:///out/review_fixture_agent/review.db
 ```
 
 `user-query` 同时支持 diff、Git 工作区和文件 snapshot；它不会把自由文本解释成文件路径、shell 命令或
 环境变量。格式错误 diff、路径逃逸、非 UTF-8 文本、超预算输入和疑似明文凭据会在创建 Agent 前以退出码 2 拒绝：
 
 ```powershell
-& $py examples/code_review_agent/run_agent.py user-query `
+& $py examples/skills_code_review_agent/run_agent.py user-query `
   "请使用 code-review Skill 审查这个补丁" `
   --diff-file .\changes.diff `
   --sandbox local `
@@ -222,7 +222,7 @@ stdout。任何级别都不会打印原始 diff、代码、evidence、工具完�
 ```
 
 ```bash
-"$py" examples/code_review_agent/run_agent.py user-query \
+"$py" examples/skills_code_review_agent/run_agent.py user-query \
   "Use the code-review Skill to review this patch" \
   --diff-file ./changes.diff \
   --sandbox local \
@@ -236,20 +236,20 @@ stderr INFO 和最后一行 stdout JSON 的 `report_files` 中显示：
 
 ```powershell
 # diff / PR patch
-& $py examples/code_review_agent/run_agent.py user-query "请审查这个补丁" --diff-file .\changes.diff --sandbox local --dry-run --output-dir out/agent_diff --db-url sqlite+pysqlite:///out/agent_diff/review.db
+& $py examples/skills_code_review_agent/run_agent.py user-query "请审查这个补丁" --diff-file .\changes.diff --sandbox local --dry-run --output-dir out/agent_diff --db-url sqlite+pysqlite:///out/agent_diff/review.db
 # 当前 Git 工作区
-& $py examples/code_review_agent/run_agent.py user-query "请审查当前工作区变更" --repo-path . --sandbox local --dry-run --output-dir out/agent_repo --db-url sqlite+pysqlite:///out/agent_repo/review.db
+& $py examples/skills_code_review_agent/run_agent.py user-query "请审查当前工作区变更" --repo-path . --sandbox local --dry-run --output-dir out/agent_repo --db-url sqlite+pysqlite:///out/agent_repo/review.db
 # 指定文件 snapshot
-& $py examples/code_review_agent/run_agent.py user-query "请审查这些文件" --files examples/code_review_agent/codereview/report.py --input-root . --sandbox local --dry-run --output-dir out/agent_files --db-url sqlite+pysqlite:///out/agent_files/review.db
+& $py examples/skills_code_review_agent/run_agent.py user-query "请审查这些文件" --files examples/skills_code_review_agent/codereview/report.py --input-root . --sandbox local --dry-run --output-dir out/agent_files --db-url sqlite+pysqlite:///out/agent_files/review.db
 # 内置 fixture
-& $py examples/code_review_agent/run_agent.py user-query "请审查安全风险样例" --fixture 02_security_simple --sandbox local --dry-run --output-dir out/agent_fixture --db-url sqlite+pysqlite:///out/agent_fixture/review.db
+& $py examples/skills_code_review_agent/run_agent.py user-query "请审查安全风险样例" --fixture 02_security_simple --sandbox local --dry-run --output-dir out/agent_fixture --db-url sqlite+pysqlite:///out/agent_fixture/review.db
 ```
 
 ```bash
-"$py" examples/code_review_agent/run_agent.py user-query "Review this patch" --diff-file ./changes.diff --sandbox local --dry-run --output-dir out/agent_diff --db-url sqlite+pysqlite:///out/agent_diff/review.db
-"$py" examples/code_review_agent/run_agent.py user-query "Review the current Git workspace" --repo-path . --sandbox local --dry-run --output-dir out/agent_repo --db-url sqlite+pysqlite:///out/agent_repo/review.db
-"$py" examples/code_review_agent/run_agent.py user-query "Review these files" --files examples/code_review_agent/codereview/report.py --input-root . --sandbox local --dry-run --output-dir out/agent_files --db-url sqlite+pysqlite:///out/agent_files/review.db
-"$py" examples/code_review_agent/run_agent.py user-query "Review the security fixture" --fixture 02_security_simple --sandbox local --dry-run --output-dir out/agent_fixture --db-url sqlite+pysqlite:///out/agent_fixture/review.db
+"$py" examples/skills_code_review_agent/run_agent.py user-query "Review this patch" --diff-file ./changes.diff --sandbox local --dry-run --output-dir out/agent_diff --db-url sqlite+pysqlite:///out/agent_diff/review.db
+"$py" examples/skills_code_review_agent/run_agent.py user-query "Review the current Git workspace" --repo-path . --sandbox local --dry-run --output-dir out/agent_repo --db-url sqlite+pysqlite:///out/agent_repo/review.db
+"$py" examples/skills_code_review_agent/run_agent.py user-query "Review these files" --files examples/skills_code_review_agent/codereview/report.py --input-root . --sandbox local --dry-run --output-dir out/agent_files --db-url sqlite+pysqlite:///out/agent_files/review.db
+"$py" examples/skills_code_review_agent/run_agent.py user-query "Review the security fixture" --fixture 02_security_simple --sandbox local --dry-run --output-dir out/agent_fixture --db-url sqlite+pysqlite:///out/agent_fixture/review.db
 ```
 
 `--dry-run` / `--model-mode fake` 使用离线模型，但仍由真实 `LlmAgent + Runner` 发出两个工具调用；
@@ -269,7 +269,7 @@ function Invoke-ReviewFixture {
   $outputDir = "out\fixtures\$Fixture"
   $dbUrl = "sqlite+pysqlite:///$($outputDir.Replace('\', '/'))/review.db"
   $cliArguments = @(
-    "examples/code_review_agent/run_agent.py", "review",
+    "examples/skills_code_review_agent/run_agent.py", "review",
     "--fixture", $Fixture,
     "--sandbox", "local",
     "--dry-run",
@@ -301,7 +301,7 @@ review_fixture() {
   local fixture="$1"
   local output_dir="out/fixtures/${fixture}"
   local db_url="sqlite+pysqlite:///${output_dir}/review.db"
-  local args=(examples/code_review_agent/run_agent.py review --fixture "$fixture" --sandbox local --dry-run --output-dir "$output_dir" --db-url "$db_url")
+  local args=(examples/skills_code_review_agent/run_agent.py review --fixture "$fixture" --sandbox local --dry-run --output-dir "$output_dir" --db-url "$db_url")
   "$py" "${args[@]}"
 }
 
@@ -332,13 +332,13 @@ review_fixture 02_security_simple agent
 
 ```powershell
 # 关闭 LLM 文本增强；规则、Filter、sandbox 和落库仍完整执行。
-& $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode off --output-dir out/review_off --db-url sqlite+pysqlite:///out/review_off/review.db
+& $py examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode off --output-dir out/review_off --db-url sqlite+pysqlite:///out/review_off/review.db
 
 # fake 增强，离线可复现。
-& $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode fake --output-dir out/review_fake --db-url sqlite+pysqlite:///out/review_fake/review.db
+& $py examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode fake --output-dir out/review_fake --db-url sqlite+pysqlite:///out/review_fake/review.db
 
 # real 增强；需要 .env 三项，且不可同时传 --dry-run。
-& $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode real --output-dir out/review_real --db-url sqlite+pysqlite:///out/review_real/review.db
+& $py examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode real --output-dir out/review_real --db-url sqlite+pysqlite:///out/review_real/review.db
 ```
 
 `--dry-run` 强制 fake，因此 `--dry-run --model-mode real` 不会调用真实模型。
@@ -346,25 +346,25 @@ review_fixture 02_security_simple agent
 Linux/macOS Bash 的模型命令与参数保持一致，只替换调用方式：
 
 ```bash
-"$py" examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode off --output-dir out/review_off --db-url sqlite+pysqlite:///out/review_off/review.db
-"$py" examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode fake --output-dir out/review_fake --db-url sqlite+pysqlite:///out/review_fake/review.db
-"$py" examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode real --output-dir out/review_real --db-url sqlite+pysqlite:///out/review_real/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode off --output-dir out/review_off --db-url sqlite+pysqlite:///out/review_off/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode fake --output-dir out/review_fake --db-url sqlite+pysqlite:///out/review_fake/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --model-mode real --output-dir out/review_real --db-url sqlite+pysqlite:///out/review_real/review.db
 ```
 
 ### local、Container 与 Cube
 
 ```powershell
 # local：开发 fallback，输出目录下的 .workspaces 仅作运行期工作根，任务结束后会清理。
-& $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_local --db-url sqlite+pysqlite:///out/review_local/review.db
+& $py examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_local --db-url sqlite+pysqlite:///out/review_local/review.db
 
 # Container：生产严格默认；Docker daemon 必须已启动，运行时强制 network_mode=none。
-& $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox container --model-mode fake --output-dir out/review_container --db-url sqlite+pysqlite:///out/review_container/review.db
+& $py examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox container --model-mode fake --output-dir out/review_container --db-url sqlite+pysqlite:///out/review_container/review.db
 
 # Container + real 模型：模型调用在宿主侧；Key 不传入容器。
-& $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox container --model-mode real --output-dir out/review_real_container --db-url sqlite+pysqlite:///out/review_real_container/review.db
+& $py examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox container --model-mode real --output-dir out/review_real_container --db-url sqlite+pysqlite:///out/review_real_container/review.db
 
 # Cube：当前没有机器可验证的无出口网络证明，Filter 拒绝是预期安全结果。
-& $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox cube --dry-run --output-dir out/review_cube --db-url sqlite+pysqlite:///out/review_cube/review.db
+& $py examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox cube --dry-run --output-dir out/review_cube --db-url sqlite+pysqlite:///out/review_cube/review.db
 ```
 
 Container 不可用时会返回配置错误，绝不会静默回退到 local。首次启动若 Docker 需要拉取 SDK 默认镜像，
@@ -373,10 +373,10 @@ Container 不可用时会返回配置错误，绝不会静默回退到 local。�
 Linux/macOS Bash 的沙箱命令：
 
 ```bash
-"$py" examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_local --db-url sqlite+pysqlite:///out/review_local/review.db
-"$py" examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox container --model-mode fake --output-dir out/review_container --db-url sqlite+pysqlite:///out/review_container/review.db
-"$py" examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox container --model-mode real --output-dir out/review_real_container --db-url sqlite+pysqlite:///out/review_real_container/review.db
-"$py" examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox cube --dry-run --output-dir out/review_cube --db-url sqlite+pysqlite:///out/review_cube/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_local --db-url sqlite+pysqlite:///out/review_local/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox container --model-mode fake --output-dir out/review_container --db-url sqlite+pysqlite:///out/review_container/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox container --model-mode real --output-dir out/review_real_container --db-url sqlite+pysqlite:///out/review_real_container/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox cube --dry-run --output-dir out/review_cube --db-url sqlite+pysqlite:///out/review_cube/review.db
 ```
 
 ## 5. 报告、数据库与 CI 退出码
@@ -384,18 +384,18 @@ Linux/macOS Bash 的沙箱命令：
 把 CLI JSON 保存为 PowerShell 对象即可立刻打开报告并按 task id 查询：
 
 ```powershell
-$result = & $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_query --db-url sqlite+pysqlite:///out/review_query/review.db | ConvertFrom-Json
+$result = & $py examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_query --db-url sqlite+pysqlite:///out/review_query/review.db | ConvertFrom-Json
 $result.report_files.json
 $result.report_files.markdown
-& $py examples/code_review_agent/run_agent.py show $result.task_id --db-url sqlite+pysqlite:///out/review_query/review.db
-& $py examples/code_review_agent/run_agent.py list --db-url sqlite+pysqlite:///out/review_query/review.db
-& $py examples/code_review_agent/run_agent.py init-db --db-url sqlite+pysqlite:///out/review_query/review.db
+& $py examples/skills_code_review_agent/run_agent.py show $result.task_id --db-url sqlite+pysqlite:///out/review_query/review.db
+& $py examples/skills_code_review_agent/run_agent.py list --db-url sqlite+pysqlite:///out/review_query/review.db
+& $py examples/skills_code_review_agent/run_agent.py init-db --db-url sqlite+pysqlite:///out/review_query/review.db
 ```
 
 用于 CI 阻断 high/critical finding：
 
 ```powershell
-& $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --fail-on-severity high --output-dir out/review_ci --db-url sqlite+pysqlite:///out/review_ci/review.db
+& $py examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --fail-on-severity high --output-dir out/review_ci --db-url sqlite+pysqlite:///out/review_ci/review.db
 ```
 
 此命令即使成功生成报告也会以退出码 `1` 返回；Filter 拦截、sandbox warning、人工复核项默认不改变退出码。
@@ -404,32 +404,32 @@ Linux/macOS Bash 查询同一个 bundle 时，先把成功 JSON 保存在输出�
 
 ```bash
 mkdir -p out/review_query
-"$py" examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_query --db-url sqlite+pysqlite:///out/review_query/review.db | tee out/review_query/cli_result.json
+"$py" examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_query --db-url sqlite+pysqlite:///out/review_query/review.db | tee out/review_query/cli_result.json
 task_id=$("$py" -c "import json; print(json.load(open('out/review_query/cli_result.json', encoding='utf-8'))['task_id'])")
-"$py" examples/code_review_agent/run_agent.py show "$task_id" --db-url sqlite+pysqlite:///out/review_query/review.db
-"$py" examples/code_review_agent/run_agent.py list --db-url sqlite+pysqlite:///out/review_query/review.db
-"$py" examples/code_review_agent/run_agent.py init-db --db-url sqlite+pysqlite:///out/review_query/review.db
+"$py" examples/skills_code_review_agent/run_agent.py show "$task_id" --db-url sqlite+pysqlite:///out/review_query/review.db
+"$py" examples/skills_code_review_agent/run_agent.py list --db-url sqlite+pysqlite:///out/review_query/review.db
+"$py" examples/skills_code_review_agent/run_agent.py init-db --db-url sqlite+pysqlite:///out/review_query/review.db
 ```
 
 ## 6. 自动化测试、评测与 PR 验收
 
 ```powershell
 # 分层测试
-& $py -m pytest examples/code_review_agent/tests/unit -q -p no:cacheprovider
-& $py -m pytest examples/code_review_agent/tests/integration -q -p no:cacheprovider
-& $py -m pytest examples/code_review_agent/tests/e2e -q -p no:cacheprovider
+& $py -m pytest examples/skills_code_review_agent/tests/unit -q -p no:cacheprovider
+& $py -m pytest examples/skills_code_review_agent/tests/integration -q -p no:cacheprovider
+& $py -m pytest examples/skills_code_review_agent/tests/e2e -q -p no:cacheprovider
 
 # 普通完整回归：不要求 Docker 或真实模型。
-& $py -m pytest examples/code_review_agent/tests -q -m "not container and not real_llm" -p no:cacheprovider
+& $py -m pytest examples/skills_code_review_agent/tests -q -m "not container and not real_llm" -p no:cacheprovider
 
 # 可选的实际 Container / real 模型验证。
-& $py -m pytest examples/code_review_agent/tests/integration -q -m container -p no:cacheprovider
-& $py -m pytest examples/code_review_agent/tests/integration -q -m real_llm -p no:cacheprovider
+& $py -m pytest examples/skills_code_review_agent/tests/integration -q -m container -p no:cacheprovider
+& $py -m pytest examples/skills_code_review_agent/tests/integration -q -m real_llm -p no:cacheprovider
 
 # 公开代理门禁与静态规范。
-& $py examples/code_review_agent/evaluate.py --sandbox local --output-dir out/eval_local
-& $py examples/code_review_agent/evaluate.py --sandbox container --output-dir out/eval_container
-& $py -m flake8 examples/code_review_agent
+& $py examples/skills_code_review_agent/evaluate.py --sandbox local --output-dir out/eval_local
+& $py examples/skills_code_review_agent/evaluate.py --sandbox container --output-dir out/eval_container
+& $py -m flake8 examples/skills_code_review_agent
 ```
 
 `evaluate.py` 只对公开代理语料证明 AC2，不代表官方隐藏样本结果。Container/real 模型测试是可选集成：
@@ -438,15 +438,15 @@ task_id=$("$py" -c "import json; print(json.load(open('out/review_query/cli_resu
 Linux/macOS Bash 的测试、评测和 lint 命令仅将 `& $py` 替换为 `"$py"`：
 
 ```bash
-"$py" -m pytest examples/code_review_agent/tests/unit -q -p no:cacheprovider
-"$py" -m pytest examples/code_review_agent/tests/integration -q -p no:cacheprovider
-"$py" -m pytest examples/code_review_agent/tests/e2e -q -p no:cacheprovider
-"$py" -m pytest examples/code_review_agent/tests -q -m "not container and not real_llm" -p no:cacheprovider
-"$py" -m pytest examples/code_review_agent/tests/integration -q -m container -p no:cacheprovider
-"$py" -m pytest examples/code_review_agent/tests/integration -q -m real_llm -p no:cacheprovider
-"$py" examples/code_review_agent/evaluate.py --sandbox local --output-dir out/eval_local
-"$py" examples/code_review_agent/evaluate.py --sandbox container --output-dir out/eval_container
-"$py" -m flake8 examples/code_review_agent
+"$py" -m pytest examples/skills_code_review_agent/tests/unit -q -p no:cacheprovider
+"$py" -m pytest examples/skills_code_review_agent/tests/integration -q -p no:cacheprovider
+"$py" -m pytest examples/skills_code_review_agent/tests/e2e -q -p no:cacheprovider
+"$py" -m pytest examples/skills_code_review_agent/tests -q -m "not container and not real_llm" -p no:cacheprovider
+"$py" -m pytest examples/skills_code_review_agent/tests/integration -q -m container -p no:cacheprovider
+"$py" -m pytest examples/skills_code_review_agent/tests/integration -q -m real_llm -p no:cacheprovider
+"$py" examples/skills_code_review_agent/evaluate.py --sandbox local --output-dir out/eval_local
+"$py" examples/skills_code_review_agent/evaluate.py --sandbox container --output-dir out/eval_container
+"$py" -m flake8 examples/skills_code_review_agent
 ```
 
 ## 7. 常见故障

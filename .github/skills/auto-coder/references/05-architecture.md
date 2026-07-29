@@ -7,6 +7,7 @@
 ```
 入口层    run_agent.py (CLI)          agent/ (LlmAgent + SkillToolSet)
               │                              │
+              │                    skill_load → 受控 skill_run
               └──────────┬───────────────────┘
                          ▼
 应用层    codereview/pipeline.py  ReviewPipeline.run()  ← 唯一检测链路
@@ -25,7 +26,7 @@
 ### 5.2 目录树（交付清单，任务完成的文件级依据）
 
 ```
-examples/code_review_agent/
+examples/skills_code_review_agent/
 ├── README.md
 ├── run_agent.py
 ├── agent/
@@ -105,7 +106,7 @@ examples/code_review_agent/
     │   ├── test_fixtures_e2e.py
     │   └── test_evaluate.py
     ├── fixtures/
-    │   ├── diffs/        # 8 条公开 smoke fixture + 8 条 realistic 配对样例
+    │   ├── diffs/        # 8 条公开 simple fixture + 8 条 complex 配对样例
     │   └── corpus/       # 标注评测语料
     └── support/          # 共享 fake、builder 和断言
 ```

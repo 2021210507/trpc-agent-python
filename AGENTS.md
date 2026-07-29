@@ -5,10 +5,10 @@
 本文件适用于仓库根目录及全部子目录。当前工作的主要交付范围是：
 
 ```text
-examples/code_review_agent/
+examples/skills_code_review_agent/
 ```
 
-除非 `DEV_SPEC.md` 的当前排期任务明确要求修改共享 SDK，否则不得改动
+除非 `examples/skills_code_review_agent/DEV_SPEC.md` 的当前排期任务明确要求修改共享 SDK，否则不得改动
 `trpc_agent_sdk/` 或与 issue #92 无关的示例。发现必须修改共享 SDK 时，先说明证据、
 影响面和替代方案；不得为了方便绕开 SDK 已有能力。
 
@@ -25,19 +25,19 @@ examples/code_review_agent/
 - Metrics、Telemetry、Filter 事件和沙箱运行审计；
 - fake model / dry-run 的无 Key 离线验证链路。
 
-最终必须满足 `DEV_SPEC.md` 中 AC1–AC8。公开代理语料只能佐证 AC2，禁止宣称已经证明
+最终必须满足 `examples/skills_code_review_agent/DEV_SPEC.md` 中 AC1–AC8。公开代理语料只能佐证 AC2，禁止宣称已经证明
 官方隐藏样本达标。
 
 ## 3. 规范优先级与必读文件
 
 ### 3.1 单一真相源
 
-1. `DEV_SPEC.md` 是产品范围、架构、字段契约、预算、验收标准和排期的唯一真相源。
+1. `examples/skills_code_review_agent/DEV_SPEC.md` 是产品范围、架构、字段契约、预算、验收标准和排期的唯一真相源。
 2. `.github/skills/auto-coder/references/*.md` 和
    `.claude/skills/auto-coder/references/*.md` 是生成的导航副本，不得直接编辑。
-3. `implementation_plan.md` 和其他计划文档只解释设计取舍；与 `DEV_SPEC.md` 冲突时，
-   以 `DEV_SPEC.md` 为准。
-4. `DEV_SPEC.md` 第 1.2 节的锁定决策不得在普通开发任务中重新设计。确需改变时必须先
+3. `implementation_plan.md` 和其他计划文档只解释设计取舍；与 `examples/skills_code_review_agent/DEV_SPEC.md` 冲突时，
+   以后者为准。
+4. `examples/skills_code_review_agent/DEV_SPEC.md` 第 1.2 节的锁定决策不得在普通开发任务中重新设计。确需改变时必须先
    获得用户明确批准，并同步更新规格、排期和测试合同。
 5. 第 7 章属于未来规划。除非用户明确要求并接受扩展范围，否则不得提前实现。
 
@@ -55,7 +55,7 @@ QA 进度发生变更时，同一操作还必须同步更新 `.claude/skills/...
 
 每次实施循环至少读取：
 
-- `DEV_SPEC.md` 中目标任务相关章节；
+- `examples/skills_code_review_agent/DEV_SPEC.md` 中目标任务相关章节；
 - `.github/skills/auto-coder/references/06-schedule.md`；
 - 目标任务行的前置任务、验收标准和测试方法；
 - `.github/skills/qa-tester/QA_TEST_PLAN.md` 中与该任务对应的 QA case。
@@ -84,7 +84,7 @@ PowerShell 手工执行可先激活：
 
 只有 `.venv` 不存在或 `.venv\Scripts\python.exe` 不可执行时，才允许临时使用已安装且
 版本为 Python `>=3.10` 的 `python` 读取规格或做只读诊断；不得用系统 Python 作为测试
-通过证据。Python 不可用时直接读取 `DEV_SPEC.md`，不得依赖可能过期的 references。
+通过证据。Python 不可用时直接读取 `examples/skills_code_review_agent/DEV_SPEC.md`，不得依赖可能过期的 references。
 
 ### 4.2 检查工作区和前置条件
 
@@ -178,7 +178,7 @@ PowerShell 手工执行可先激活：
 - `skills/code-review/scripts/` 会进入 Container/Cube 隔离 workspace，不能假定宿主
   `.venv` 会被复制或挂载，因此默认优先使用 Python 标准库，但不绝对禁止第三方库。确有
   必要引入时，必须先向用户说明包名、固定版本、用途、收益、替代方案、许可证/安全风险、
-  依赖声明位置及沙箱镜像/runtime 的供应方式，获得明确批准并同步修改 `DEV_SPEC.md`。
+  依赖声明位置及沙箱镜像/runtime 的供应方式，获得明确批准并同步修改 `examples/skills_code_review_agent/DEV_SPEC.md`。
 - 用户批准新增依赖后，Agent 可以自行把固定版本安装到仓库 `.venv`，并在受控的
   Container 镜像或 Cube/E2B 模板构建/预置阶段安装相同依赖；不得污染系统 Python 或
   用户级 site-packages。依赖必须通过仓库认可的文件锁定版本和完整性，并验证宿主与目标
@@ -312,7 +312,7 @@ network_policy = deny
   `.\.venv\Scripts\Activate.ps1` 后在同一 shell 中运行。
 - 禁止把系统 Python、用户级 site-packages 或全局 pytest 的结果作为通过证据。若误用，
   必须如实标记为无效证据，并在 `.venv` 中重新运行。
-- 测试代码、测试辅助和测试数据统一放在 `examples/code_review_agent/tests/`，使用 pytest；
+- 测试代码、测试辅助和测试数据统一放在 `examples/skills_code_review_agent/tests/`，使用 pytest；
   项目顶层不得另建 `fixtures/`。
 - `tests/unit/` 只验证单个确定性模块接口，不得依赖 Docker、网络或真实模型 Key。
 - `tests/integration/` 验证模块或本地适配器协作；默认使用 fake runtime/model、`tmp_path`
@@ -330,14 +330,14 @@ network_policy = deny
 - 完成一个纵向闭环后运行普通回归：
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest examples/code_review_agent/tests -q -m "not container and not real_llm"
+.\.venv\Scripts\python.exe -m pytest examples/skills_code_review_agent/tests -q -m "not container and not real_llm"
 ```
 
 - 发布前还必须运行：
 
 ```powershell
-.\.venv\Scripts\python.exe examples/code_review_agent/evaluate.py --sandbox local
-.\.venv\Scripts\python.exe -m flake8 examples/code_review_agent
+.\.venv\Scripts\python.exe examples/skills_code_review_agent/evaluate.py --sandbox local
+.\.venv\Scripts\python.exe -m flake8 examples/skills_code_review_agent
 ```
 
 `evaluate.py` 默认必须真实执行仓库自带可信 Skill 脚本，强制 fake model 和显式 local

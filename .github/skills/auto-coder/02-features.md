@@ -56,7 +56,7 @@ diff 解析必须覆盖边界：rename、binary、CRLF、`\ No newline at end of
 
 ### 2.2 CR Skill（R1）
 
-`examples/code_review_agent/skills/code-review/`（自包容，随示例目录整体拷贝可用）：
+`examples/skills_code_review_agent/skills/code-review/`（自包容，随示例目录整体拷贝可用）：
 
 - `SKILL.md`：YAML frontmatter（name=code-review）+ 用法说明 + 工作流描述
 - `rules/`：6 类规则文档（security / async-errors / resource-leak / missing-tests / secrets / db-lifecycle），每篇含规则清单、rule_id、severity、置信度、`requires_full_file` 标记、示例

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from examples.code_review_agent.codereview.redaction import (
+from examples.skills_code_review_agent.codereview.redaction import (
     contains_plaintext_secret,
     redact_data,
     redact_text,

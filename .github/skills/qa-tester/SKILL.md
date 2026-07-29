@@ -1,11 +1,11 @@
 ---
 name: qa-tester
-description: Execute and audit the DEV_SPEC quality gates for this repository's automatic code-review Agent under examples/code_review_agent. Runs focused pytest cases, the eight public diff fixtures, sandbox and Filter security tests, CLI/SQLite/report checks, offline evaluate.py gates, and optional container or real-LLM integrations while recording command evidence in QA_TEST_PROGRESS.md. Use when the user asks to "run QA", "QA test", "QA 测试", "执行测试", "跑测试", verify AC1-AC8, test a fixture or QA case ID, or "test and fix" the code-review Agent.
+description: Execute and audit the examples/skills_code_review_agent/DEV_SPEC.md quality gates for this repository's automatic code-review Agent. Runs focused pytest cases, the eight public diff fixtures, sandbox and Filter security tests, CLI/SQLite/report checks, offline evaluate.py gates, and optional container or real-LLM integrations while recording command evidence in QA_TEST_PROGRESS.md. Use when the user asks to "run QA", "QA test", "QA 测试", "执行测试", "跑测试", verify AC1-AC8, test a fixture or QA case ID, or "test and fix" the code-review Agent.
 ---
 
 # QA Tester
 
-Validate only the automatic code-review Agent implementation defined by `DEV_SPEC.md`.
+Validate only the automatic code-review Agent implementation defined by `examples/skills_code_review_agent/DEV_SPEC.md`.
 
 ## Authority
 
@@ -28,7 +28,7 @@ Validate only the automatic code-review Agent implementation defined by `DEV_SPE
 
 | File | Purpose |
 |---|---|
-| `DEV_SPEC.md` | Normative requirements and AC1–AC8 |
+| `examples/skills_code_review_agent/DEV_SPEC.md` | Normative requirements and AC1–AC8 |
 | `QA_TEST_PLAN.md` | Case commands and expected evidence |
 | `QA_TEST_PROGRESS.md` | One row per executed case |
 | `references/test_patterns.md` | Evidence, report, database, security, and optional integration patterns |
@@ -62,9 +62,9 @@ If there is no venv, use a Python `>=3.10` interpreter already available. Do not
 
 Confirm:
 
-- `DEV_SPEC.md` has exactly chapters 1–7.
+- `examples/skills_code_review_agent/DEV_SPEC.md` has exactly chapters 1–7.
 - auto-coder references are synced.
-- `examples/code_review_agent/tests/{unit,integration,e2e,fixtures,support}/` exists and the project has no top-level test fixture directory.
+- `examples/skills_code_review_agent/tests/{unit,integration,e2e,fixtures,support}/` exists and the project has no top-level test fixture directory.
 - Docker and real-model Key availability only for optional section G.
 
 ## 3. Execute one case

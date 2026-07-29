@@ -1,6 +1,6 @@
 # DEV_SPEC — 自动代码评审 Agent（issue #92）
 
-> 本规格是 `examples/code_review_agent/` 的唯一真相源（single source of truth）。
+> 本规格是 `examples/skills_code_review_agent/` 的唯一真相源（single source of truth）。
 > auto-coder 按第 6 章排期逐任务实现；任何设计分歧以本文档为准。
 > 决策背景见 `自动代码评审_agent_e5c4eb90.plan.md`（计划书 v2，三轮拷问结论）。
 > 设计对照与改进依据见仓库根目录 `implementation_plan.md`；该文档用于解释取舍，若与本规格冲突，以本规格为准。
@@ -97,7 +97,7 @@ diff 解析必须覆盖边界：rename、binary、CRLF、`\ No newline at end of
 
 ### 2.2 CR Skill（R1）
 
-`examples/code_review_agent/skills/code-review/`（自包容，随示例目录整体拷贝可用）：
+`examples/skills_code_review_agent/skills/code-review/`（自包容，随示例目录整体拷贝可用）：
 
 - `SKILL.md`：YAML frontmatter（name=code-review）+ 用法说明 + 工作流描述
 - `rules/`：6 类规则文档（security / async-errors / resource-leak / missing-tests / secrets / db-lifecycle），每篇含规则清单、rule_id、severity、置信度、`requires_full_file` 标记、示例
@@ -285,7 +285,7 @@ Telemetry span 属性采用白名单：只允许脱敏 task id、状态、阶段
 `report_files.json` / `report_files.markdown` 的完整输出位置，方便人工和 CI 直接定位产物；路径
 只输出到当前终端，绝不写入 report、数据库、Telemetry 或日志。维护者的完整 PowerShell 命令、
 Docker 前置检查、16 个 fixture、模型模式和故障排查统一见
-`examples/code_review_agent/OPERATIONS.md`；真实模型的三项白名单变量由该目录 `.env` 读取，
+`examples/skills_code_review_agent/OPERATIONS.md`；真实模型的三项白名单变量由该目录 `.env` 读取，
 runtime 类型、网络策略和输出目录必须显式通过 CLI 参数设置，不得藏在 `.env`。
 
 `--trace` 是显式终端诊断模式：以 stderr JSON Lines 流式显示受控 query 解析、SDK
@@ -368,7 +368,7 @@ trace 字段只能包含固定事件名、安全枚举、计数、状态和布�
 
 ### 4.1 目录与框架
 
-- pytest；所有测试代码、测试辅助和测试数据统一放在 `examples/code_review_agent/tests/`
+- pytest；所有测试代码、测试辅助和测试数据统一放在 `examples/skills_code_review_agent/tests/`
 - `tests/unit/`：单个确定性模块接口测试；不依赖 Docker、API Key 或网络，外部依赖使用 fake 或临时本地替代
 - `tests/integration/`：多个模块或本地适配器的协作测试，包括 SQLite、Filter 链、Skill 脚本、沙箱和 pipeline
 - `tests/e2e/`：从 CLI / evaluate 输入到 JSON、Markdown、数据库 bundle、指标和退出码的完整闭环
@@ -453,7 +453,7 @@ trace 字段只能包含固定事件名、安全枚举、计数、状态和布�
 2. **evaluate 默认路径禁止用 fake workspace**：8 条 fixture 必须各自以独立 `user-query` 任务真跑 Agent 的 `skill_load → skill_run` 与仓库自带可信 Skill 脚本，并各自验证 JSON、Markdown、SQLite 和单条时延；公开代理语料可直跑可信 Skill 脚本计算规则指标。仅允许执行本仓库 `skills/code-review/scripts/` 与 fixtures，禁止用户自定义命令混入门禁路径。
 3. local 模式下 Filter 仍运行，并把「隔离与网络策略不可强制证明」降级告警写入 warnings；cube 默认拒绝的原因是当前 SDK 无法提供具体实例无出口/受控网关的可验证证明，而不是 `network_allowed=True` 字段本身。container 集成测试必须验证实际生效的 `network_mode=none`。
 
-**与 pytest 的分工**：pytest 负责 unit、integration 与 fixture 驱动的 e2e；`evaluate.py` 负责跨 fixture 的聚合指标门禁。CI 建议顺序：`pytest examples/code_review_agent/tests/ -q`（跳过 container/real_llm）→ `python examples/code_review_agent/evaluate.py --sandbox local`（model=fake + sandbox=local）。
+**与 pytest 的分工**：pytest 负责 unit、integration 与 fixture 驱动的 e2e；`evaluate.py` 负责跨 fixture 的聚合指标门禁。CI 建议顺序：`pytest examples/skills_code_review_agent/tests/ -q`（跳过 container/real_llm）→ `python examples/skills_code_review_agent/evaluate.py --sandbox local`（model=fake + sandbox=local）。
 
 ### 4.5 关键安全测试
 
@@ -500,7 +500,7 @@ trace 字段只能包含固定事件名、安全枚举、计数、状态和布�
 ### 5.2 目录树（交付清单，任务完成的文件级依据）
 
 ```
-examples/code_review_agent/
+examples/skills_code_review_agent/
 ├── README.md
 ├── run_agent.py
 ├── agent/
@@ -673,7 +673,7 @@ examples/code_review_agent/
 | D1 | LLM 增强层（codereview/llm_enhancer.py，fake|real|off） | [x] | 2026-07-27 | fake 与 real 走相同 LlmAgent+Runner 路径；仅改写 recommendation/summary/复核提示；输入全量脱敏；不得改变 finding identity/rule/severity/confidence/bucket/dedup；有 Key 也不自动 real | tests/integration/test_llm_enhancer.py：canonical finding 对象前后逐字段一致；仅允许文本增强字段变化；LLM 输入无明文 |
 | D2 | Agent 入口（agent/agent.py + prompts.py，LlmAgent+SkillToolSet） | [x] | 2026-07-28 | 经 SkillRepository 发现 code-review skill；Agent 真实产生 `skill_load → skill_run` 工具调用，且受控 `skill_run` 只接受一次性 request id，由宿主按 manifest 构造固定执行计划；未 load、无效 request 或 Filter 非 ALLOW 均零沙箱副作用；Agent 与 CLI 共享同一 manifest、Filter、sandbox、storage 和 ReviewPipeline，原始 diff/宿主路径/命令不进模型，输出 canonical finding 集合一致 | tests/integration/test_agent_entry.py：工具事件顺序、双入口 finding 一致性、无效 request/跳过 load/未注册脚本零执行；tests/e2e/test_cli.py：自然语言 fixture query 生成 JSON+MD+DB |
 | D3 | 8 条公开 fixture + e2e（tests/fixtures/diffs/ + tests/e2e/test_fixtures_e2e.py） | [x] | 2026-07-27 | 4.3 表 8 条全交付；逐条断言 findings/桶/状态/JSON+MD+DB；08 号验证“真实密钥能检出且所有出口无明文”及注释占位符降噪 | pytest tests/e2e/test_fixtures_e2e.py 参数化 8/8 通过 + 日志/文件/DB 字节级扫描 |
-| D4 | 评测语料 + evaluate.py CI 硬门禁 | [x] | 2026-07-28 | 4.4 语料规模与 blind-spot 观测集达标；匹配键 (file,line,category)；8 条 fixture 各自经 fake+local Agent/Skill 运行并各自 ≤120s，高危 Recall≥0.8、finding-level FP 占比≤0.15、脱敏≥0.95；聚合评测耗时只观测；摘要含单条时延、版本/配置/环境；默认不写 DB；README 明示 AC2 为代理 | python examples/code_review_agent/evaluate.py --sandbox local（期望 exit=0）+ tests/e2e/test_evaluate.py：断言 8 条 Agent 时延/工具序列，禁止 real/LLM 降噪参数，门禁失败 exit 非零 |
+| D4 | 评测语料 + evaluate.py CI 硬门禁 | [x] | 2026-07-28 | 4.4 语料规模与 blind-spot 观测集达标；匹配键 (file,line,category)；8 条 fixture 各自经 fake+local Agent/Skill 运行并各自 ≤120s，高危 Recall≥0.8、finding-level FP 占比≤0.15、脱敏≥0.95；聚合评测耗时只观测；摘要含单条时延、版本/配置/环境；默认不写 DB；README 明示 AC2 为代理 | python examples/skills_code_review_agent/evaluate.py --sandbox local（期望 exit=0）+ tests/e2e/test_evaluate.py：断言 8 条 Agent 时延/工具序列，禁止 real/LLM 降噪参数，门禁失败 exit 非零 |
 
 #### 阶段 E：收尾
 

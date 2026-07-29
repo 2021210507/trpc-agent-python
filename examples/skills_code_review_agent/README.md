@@ -78,7 +78,7 @@ CLI user-query ───────→ SDK LlmAgent + SkillToolSet      │
   但只能作为显式开发 fallback。
 - 真实模型仅在显式 `--model-mode real` 时需要 `.env` 配置。
 
-本示例没有新增专属 pip 包，不提供 `examples/code_review_agent/requirements.txt`。依赖统一由根
+本示例没有新增专属 pip 包，不提供 `examples/skills_code_review_agent/requirements.txt`。依赖统一由根
 [`pyproject.toml`](../../pyproject.toml) 与既有根 `requirements*.txt` 声明，避免局部 requirements 发生
 版本漂移。维护者新建环境可按根项目安装：
 
@@ -100,13 +100,13 @@ py=".venv/bin/python"
 Windows PowerShell：
 
 ```powershell
-Copy-Item examples/code_review_agent/.env.example examples/code_review_agent/.env
+Copy-Item examples/skills_code_review_agent/.env.example examples/skills_code_review_agent/.env
 ```
 
 Linux/macOS Bash：
 
 ```bash
-cp examples/code_review_agent/.env.example examples/code_review_agent/.env
+cp examples/skills_code_review_agent/.env.example examples/skills_code_review_agent/.env
 ```
 
 ```dotenv
@@ -124,25 +124,25 @@ Windows PowerShell：
 
 ```powershell
 $py = ".\.venv\Scripts\python.exe"
-& $py examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_quickstart --db-url sqlite+pysqlite:///out/review_quickstart/review.db
+& $py examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_quickstart --db-url sqlite+pysqlite:///out/review_quickstart/review.db
 ```
 
 Linux/macOS Bash：
 
 ```bash
 py=".venv/bin/python"
-"$py" examples/code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_quickstart --db-url sqlite+pysqlite:///out/review_quickstart/review.db
+"$py" examples/skills_code_review_agent/run_agent.py review --fixture 02_security_simple --sandbox local --dry-run --output-dir out/review_quickstart --db-url sqlite+pysqlite:///out/review_quickstart/review.db
 ```
 
 `--dry-run` 强制 fake model，但不会把沙箱自动改成 local。要验证 SDK Agent 入口，使用带结构化输入的
 `user-query`：
 
 ```powershell
-& $py examples/code_review_agent/run_agent.py user-query "请使用 code-review Skill 审查这个 fixture" --fixture 01_clean_simple --sandbox local --dry-run --log-level INFO --output-dir out/review_user_query --db-url sqlite+pysqlite:///out/review_user_query/review.db
+& $py examples/skills_code_review_agent/run_agent.py user-query "请使用 code-review Skill 审查这个 fixture" --fixture 01_clean_simple --sandbox local --dry-run --log-level INFO --output-dir out/review_user_query --db-url sqlite+pysqlite:///out/review_user_query/review.db
 ```
 
 ```bash
-"$py" examples/code_review_agent/run_agent.py user-query "Use the code-review Skill to review this fixture" --fixture 01_clean_simple --sandbox local --dry-run --log-level INFO --output-dir out/review_user_query --db-url sqlite+pysqlite:///out/review_user_query/review.db
+"$py" examples/skills_code_review_agent/run_agent.py user-query "Use the code-review Skill to review this fixture" --fixture 01_clean_simple --sandbox local --dry-run --log-level INFO --output-dir out/review_user_query --db-url sqlite+pysqlite:///out/review_user_query/review.db
 ```
 
 `user-query` 的自然语言只表达审查意图；`--diff-file`、`--repo-path`、`--files` 或 `--fixture` 必须显式选择一个。
@@ -186,9 +186,9 @@ JSON 是规范源；Markdown 只能从已校验 JSON 渲染。可查看
 常规回归、公开代理评测和静态规范检查：
 
 ```powershell
-& $py -m pytest examples/code_review_agent/tests -q -m "not container and not real_llm" -p no:cacheprovider
-& $py examples/code_review_agent/evaluate.py --sandbox local --output-dir out/eval_local
-& $py -m flake8 examples/code_review_agent
+& $py -m pytest examples/skills_code_review_agent/tests -q -m "not container and not real_llm" -p no:cacheprovider
+& $py examples/skills_code_review_agent/evaluate.py --sandbox local --output-dir out/eval_local
+& $py -m flake8 examples/skills_code_review_agent
 ```
 
 `evaluate.py --sandbox local` 是 fake model 的离线**公开代理**评测；它可以提供 AC2 的可重复证据，

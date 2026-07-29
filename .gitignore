@@ -4,7 +4,7 @@
 *.lock
 *.log
 examples/*.log
-examples/code_review_agent/.env
+examples/skills_code_review_agent/.env
 
 trpc-agent-py.egg-info
 
