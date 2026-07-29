@@ -191,16 +191,40 @@ $py = ".\.venv\Scripts\python.exe"
 日志之外的持久化位置：
 
 ```text
+[code-review-trace] {"event": "user_query.request_received", "input_type": "query"}
+[code-review-trace] {"event": "user_query.input_validated", "input_type": "fixture"}
 [INFO] Review started: entrypoint=agent model_mode=real runtime=container
-[INFO] Container started: container_id=<container-id>
+[INFO] Container started: container_id=03ce66e19e5ecddd591fa5999d2d4c8851dccce0c056970454086b961223c34f
+[code-review-trace] {"entrypoint": "agent", "event": "review.started", "model_mode": "real", "runtime_type": "container"}
+[code-review-trace] {"event": "agent.turn_started", "input_type": "fixture"}
+[INFO] Agent tool call: skill_load
 [code-review-trace] {"event": "agent.tool_call", "tool": "skill_load"}
+[INFO] Agent tool response: skill_load
 [code-review-trace] {"event": "agent.tool_response", "tool": "skill_load"}
+[INFO] Agent tool call: skill_run
 [code-review-trace] {"event": "agent.tool_call", "tool": "skill_run"}
-[code-review-trace] {"event": "pipeline.filter_decision", "action": "allow"}
-[code-review-trace] {"event": "pipeline.sandbox_finished", "status": "ok", "timed_out": false, "truncated": false}
-[INFO] JSON report saved to: out/review_real_trace/review_report.json
-[INFO] Markdown report saved to: out/review_real_trace/review_report.md
-{"dry_run": false, "entrypoint": "agent", "report_files": {"json": "<absolute-output-dir>/review_report.json", "markdown": "<absolute-output-dir>/review_report.md"}, "sandbox": "container", "skill_tools": ["skill_load", "skill_run"], "status": "completed", "task_id": "<task-id>"}
+[code-review-trace] {"event": "skill_run.started", "tool": "skill_run"}
+[code-review-trace] {"event": "pipeline.started", "input_type": "fixture", "runtime_type": "container"}
+[INFO] Pipeline started: input_type=fixture runtime=container
+[code-review-trace] {"event": "pipeline.input_loaded", "source_kind": "fixture"}
+[INFO] Input loaded: source=fixture files=2 hunks=2 changed_lines=8
+[code-review-trace] {"action": "allow", "event": "pipeline.filter_decision"}
+[INFO] Filter decision: action=ALLOW
+[code-review-trace] {"event": "pipeline.sandbox_started", "runtime_type": "container"}
+[INFO] Sandbox started: runtime=container
+[code-review-trace] {"candidate_count": 2, "event": "pipeline.sandbox_finished", "status": "ok", "timed_out": false, "truncated": false}
+[INFO] Sandbox finished: status=ok duration_ms=642 timed_out=False truncated=False
+[code-review-trace] {"event": "pipeline.report_persisted", "finding_count": 2, "needs_human_review_count": 0, "status": "completed", "warning_count": 0}
+[INFO] Canonical report persisted: findings=2 warnings=0 needs_human_review=0
+[code-review-trace] {"event": "skill_run.completed", "status": "completed"}
+[INFO] Agent tool response: skill_run
+[code-review-trace] {"event": "agent.tool_response", "tool": "skill_run"}
+[code-review-trace] {"event": "agent.turn_completed", "status": "completed"}
+[code-review-trace] {"entrypoint": "agent", "event": "review.completed", "status": "completed"}
+[INFO] Report persisted: status=completed findings=2 warnings=0 needs_human_review=0
+[INFO] JSON report saved to: E:\Tencent_open\trpc-agent-python\out\review_real_trace\review_report.json
+[INFO] Markdown report saved to: E:\Tencent_open\trpc-agent-python\out\review_real_trace\review_report.md
+{"dry_run": false, "entrypoint": "agent", "report_files": {"json": "E:\\Tencent_open\\trpc-agent-python\\out\\review_real_trace\\review_report.json", "markdown": "E:\\Tencent_open\\trpc-agent-python\\out\\review_real_trace\\review_report.md"}, "sandbox": "container", "skill_tools": ["skill_load", "skill_run"], "status": "completed", "task_id": "review-21176bf4b5af44839c77cb6f4e663c87"}
 ```
 
 这说明 `user-query → skill_load → skill_run → Filter → Container sandbox → ReviewPipeline → JSON / Markdown / SQLite`
