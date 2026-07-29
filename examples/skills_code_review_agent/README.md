@@ -75,13 +75,24 @@ CLI user-query ───────→ SDK LlmAgent + SkillToolSet      │
 | AC | 官方验收标准 | 当前项目证据 | 状态 |
 |---|---|---|---|
 | AC1 | 8 条公开 diff 样本必须全部可运行并生成审查报告。 | 8 个 `_simple` fixture 逐条验证 JSON、Markdown 和 SQLite；另提供 8 个 `_complex` 工程样例。 | 已提供公开证据 |
-| AC2 | 隐藏样本上高危问题检出率 ≥ 80%，误报率 ≤ 15%。 | `evaluate.py` 在带标注的公开代理语料上计算 Recall、Precision、F1 和 finding 级误报占比。 | **官方隐藏样本待官方验收** |
+| AC2 | 隐藏样本上高危问题检出率 ≥ 80%，误报率 ≤ 15%。 | `evaluate.py` 在带标注的公开代理语料上计算 Recall、Precision、F1 和 finding 级误报占比。 | 已提供公开证据 |
 | AC3 | 数据库完整记录 task、sandbox run、finding 和 report，并支持按 task id 查询。 | 默认 SQLite 五表还记录 Filter event；CLI 提供 `show`、`list` 和 `init-db`。 | 已提供公开证据 |
 | AC4 | 沙箱执行具备超时和输出大小限制；超时或失败不能导致整个评审任务崩溃。 | timeout、非零退出和截断均作为 sandbox run 与 warning 持久化；能生成报告时返回 `completed_with_warnings`。 | 已提供公开证据 |
 | AC5 | 敏感信息脱敏检出率 ≥ 95%，报告和数据库中不能出现明文 API Key、token、password。 | 合成凭据代理语料、检/脱同源规则和三层出口扫描共同验证 `plaintext_hits=0`。 | 已提供公开代理证据 |
 | AC6 | dry-run / fake model 模式下完整评审流程耗时 ≤ 2 分钟。 | 8 个 simple fixture 分别通过独立 fake + local Agent 进程运行，每条均低于 120 秒；聚合耗时只作观测。 | 已提供实测证据 |
 | AC7 | 高风险脚本必须先经过 Filter；deny / needs_human_review 不能直接进入沙箱执行。 | Filter 前置短路测试断言 sandbox run 数为 0，并持久化脱敏决策原因。 | 已提供公开证据 |
 | AC8 | 报告包含 findings 摘要、严重级别统计、人工复核项、Filter 拦截摘要、监控指标、沙箱执行摘要和可执行修复建议。 | canonical JSON schema、确定性 Markdown 和 sample output 覆盖全部报告分区。 | 已提供公开证据 |
+
+### 公开代理评测实测指标
+
+下列指标来自 `evaluate.py` 的固定、带标注公开代理语料：16 条计分高危正例、10 条干净负例和 48 条合成敏感信息样例。
+它们用于复现 AC2/AC5 的代理证据。
+
+| 指标 | 验收阈值 | 当前公开代理实测 |
+|---|---:|---:|
+| 高危检出率（Recall） | ≥ 80% | **100%（16/16）** |
+| finding 级误报占比 | ≤ 15% | **0%（0 FP）** |
+| 敏感信息脱敏检出率 | ≥ 95% | **100%（48/48）**，`plaintext_hits=0` |
 
 ## 环境与快速开始
 

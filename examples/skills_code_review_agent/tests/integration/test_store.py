@@ -11,10 +11,11 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
-from sqlalchemy import inspect
+from sqlalchemy import create_engine, inspect
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -233,3 +234,37 @@ def test_init_db_is_idempotent_and_sql_url_isolated(tmp_path: Path) -> None:
     isolated.initialize()
     assert isolated.get_task_bundle(TASK_ID) is None
     isolated.close()
+
+
+def test_init_db_module_cli_creates_all_business_tables(tmp_path: Path) -> None:
+    """验证独立模块 CLI 使用指定 URL 初始化完整的五张业务表。"""
+
+    database = tmp_path / "module-init.db"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "codereview.store.init_db",
+            "--db-url",
+            _db_url(database),
+        ],
+        cwd=PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+        encoding="utf-8",
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    engine = create_engine(_db_url(database))
+    try:
+        assert set(inspect(engine).get_table_names()) == {
+            "cr_filter_event",
+            "cr_finding",
+            "cr_report",
+            "cr_review_task",
+            "cr_sandbox_run",
+        }
+    finally:
+        engine.dispose()
