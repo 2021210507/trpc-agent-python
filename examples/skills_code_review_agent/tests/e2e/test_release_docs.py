@@ -148,3 +148,25 @@ def test_readme_is_primary_and_operations_is_a_detailed_supplement() -> None:
     assert "是项目主入口" in operations
     assert "详细维护与 PR 验收补充" in operations
     assert "review_fixture 02_security_simple agent" not in operations
+
+
+def test_readme_contains_a_sanitized_real_agent_container_trace_example() -> None:
+    """验证 README 给出真实模型与容器链路的脱敏预期终端输出。"""
+
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    required_trace_terms = (
+        "### 真实模型 + Container 的预期终端输出",
+        "--model-mode real",
+        "--sandbox container",
+        "container_id=<container-id>",
+        '"tool": "skill_load"',
+        '"tool": "skill_run"',
+        '"action": "allow"',
+        '"event": "pipeline.sandbox_finished"',
+        '"entrypoint": "agent"',
+        '"skill_tools": ["skill_load", "skill_run"]',
+        "out/review_real_trace/review_report.json",
+    )
+
+    assert all(term in readme for term in required_trace_terms)
+    assert "E:\\\\Tencent_open" not in readme

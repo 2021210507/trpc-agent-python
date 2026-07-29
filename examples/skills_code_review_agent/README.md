@@ -169,6 +169,44 @@ py=".venv/bin/python"
 Filter、sandbox、Pipeline 和报告落库；不显示模型私有推理、原始 query/diff、代码/evidence、request id、
 命令、环境变量或临时路径。
 
+### 真实模型 + Container 的预期终端输出
+
+在项目 `.env` 已配置真实模型、Docker daemon 已启动时，以下 PowerShell 命令会让真实 `LlmAgent` 通过
+`SkillToolSet` 调用 `code-review` Skill；模型私有推理不会显示。`--trace` 与 `INFO` 日志显示的是已脱敏的
+编排和执行事件，最终 stdout 仍只有一行可供脚本解析的 JSON。
+
+```powershell
+$py = ".\.venv\Scripts\python.exe"
+& $py examples/skills_code_review_agent/run_agent.py user-query `
+  "请使用 code-review Skill 审查 02_security_simple fixture" `
+  --fixture 02_security_simple `
+  --trace `
+  --model-mode real `
+  --sandbox container `
+  --output-dir out/review_real_trace `
+  --db-url sqlite+pysqlite:///out/review_real_trace/review.db
+```
+
+预期输出的核心片段如下。`<container-id>`、`<task-id>` 和绝对路径由本次运行生成，不应复制到文档、报告或
+日志之外的持久化位置：
+
+```text
+[INFO] Review started: entrypoint=agent model_mode=real runtime=container
+[INFO] Container started: container_id=<container-id>
+[code-review-trace] {"event": "agent.tool_call", "tool": "skill_load"}
+[code-review-trace] {"event": "agent.tool_response", "tool": "skill_load"}
+[code-review-trace] {"event": "agent.tool_call", "tool": "skill_run"}
+[code-review-trace] {"event": "pipeline.filter_decision", "action": "allow"}
+[code-review-trace] {"event": "pipeline.sandbox_finished", "status": "ok", "timed_out": false, "truncated": false}
+[INFO] JSON report saved to: out/review_real_trace/review_report.json
+[INFO] Markdown report saved to: out/review_real_trace/review_report.md
+{"dry_run": false, "entrypoint": "agent", "report_files": {"json": "<absolute-output-dir>/review_report.json", "markdown": "<absolute-output-dir>/review_report.md"}, "sandbox": "container", "skill_tools": ["skill_load", "skill_run"], "status": "completed", "task_id": "<task-id>"}
+```
+
+这说明 `user-query → skill_load → skill_run → Filter → Container sandbox → ReviewPipeline → JSON / Markdown / SQLite`
+链路已实际触发。finding 数量、耗时和 task id 随输入与运行环境变化；若 Container 或真实模型不可用，CLI 会给出
+配置错误或 warning，绝不会静默切换到 local 或 fake 模型。
+
 ## 四种输入与运行模式
 
 四种输入互斥，同一次评审只能选择一项。自然语言 `user-query` 只表达意图，文件和目录始终通过结构化参数传入。
