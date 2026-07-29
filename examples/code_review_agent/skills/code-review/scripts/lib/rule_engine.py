@@ -24,7 +24,7 @@ _SOURCES = frozenset({"rule-engine", "ast", "heuristic"})
 
 
 def mask_non_code_line(line: str) -> Tuple[str, Tuple[str, ...]]:
-    """Mask comments and ordinary strings while retaining f-string tokens."""
+    """屏蔽注释和普通字符串，同时保留 f-string 的插值标记。"""
 
     masked = list(line)
     f_strings: List[str] = []
@@ -50,7 +50,7 @@ def advance_triple_quote_state(
     line: str,
     active_delimiter: str | None,
 ) -> Tuple[str | None, bool]:
-    """Suppress whole lines belonging to a triple-quoted string/docstring."""
+    """推进三引号字符串状态，并屏蔽属于 docstring 的整行。"""
 
     if active_delimiter is not None:
         return (
@@ -69,7 +69,7 @@ def advance_triple_quote_state(
 
 
 def hunk_new_side_lines(hunk: Hunk) -> Tuple[Tuple[int, str, bool], ...]:
-    """Return ordered new-side hunk lines as (line, text, is_added)."""
+    """按行号返回 hunk 新侧行及其是否为新增行的稳定序列。"""
 
     lines = {
         line_number: (line_text, False)
@@ -104,6 +104,8 @@ class RuleMatch:
     line_side: str = "new"
 
     def __post_init__(self) -> None:
+        """校验规则元数据的标识、严重级别和置信度范围。"""
+
         if not self.rule_id or not self.category:
             raise ValueError("rule_id and category must be non-empty")
         if self.severity not in _SEVERITIES:
@@ -128,7 +130,7 @@ class ReviewRule(Protocol):
     requires_full_file: bool
 
     def match(self, change_set: ChangeSet) -> Tuple[RuleMatch, ...]:
-        """Return redacted matches for one parsed review input."""
+        """针对一个已解析审查输入返回已脱敏的规则匹配结果。"""
 
 
 @dataclass(frozen=True)
@@ -142,6 +144,8 @@ class SecretRule:
     requires_full_file: bool = False
 
     def match(self, change_set: ChangeSet) -> Tuple[RuleMatch, ...]:
+        """从变更集检测敏感信息，并保留新旧侧真实坐标。"""
+
         matches = []
         for location in detect_change_set_secrets(change_set):
             recommendation = (
@@ -175,16 +179,18 @@ class RuleEngine:
     """Run a stable sequence of rules through one dispatching boundary."""
 
     def __init__(self, rules: Sequence[ReviewRule]) -> None:
+        """保存按固定顺序执行的不可变规则集合。"""
+
         self._rules = tuple(rules)
 
     @property
     def rules(self) -> Tuple[ReviewRule, ...]:
-        """Expose immutable rule metadata for manifests and diagnostics."""
+        """暴露供 manifest 和诊断使用的不可变规则元数据。"""
 
         return self._rules
 
     def match(self, change_set: ChangeSet) -> Tuple[RuleMatch, ...]:
-        """Dispatch rules and sort findings deterministically before deduplication."""
+        """分发全部规则并在去重前对匹配结果进行稳定排序。"""
 
         matches = []
         for rule in self._rules:

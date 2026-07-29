@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from codereview.config import ReviewConfig
+from codereview.store import SqlReviewStore
+from run_agent import configure_safe_logging
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 CORPUS_PATH = PROJECT_ROOT / "tests" / "fixtures" / "corpus" / "evaluation_corpus.json"
@@ -200,54 +202,131 @@ def _iter_positive_cases(corpus: Mapping[str, Any]) -> Iterable[tuple[str, list[
             yield f"positive_{identifier}_{index + 1}", list(lines), line, category, scored
 
 
-def _run_fixture_suite(work_root: Path, sandbox: str) -> tuple[int, int]:
-    """经 CLI 的显式 fake+local/container 路径执行八条公开 fixture，且不保留业务数据库。"""
+def _run_fixture_agent(work_root: Path, fixture_name: str, sandbox: str) -> tuple[dict[str, Any], int]:
+    """以独立 user-query 子进程审查一条 fixture，并返回不含路径或原始内容的时延与产物摘要。"""
 
-    passed = 0
-    plaintext_hits = 0
-    for fixture_name in FIXTURE_NAMES:
-        fixture_root = work_root / f"fixture_{fixture_name}"
-        fixture_root.mkdir(parents=True, exist_ok=True)
-        output_dir = fixture_root / "reports"
-        database = fixture_root / "fixture.db"
+    fixture_root = work_root / f"fixture_{fixture_name}"
+    fixture_root.mkdir(parents=True, exist_ok=True)
+    output_dir = fixture_root / "reports"
+    database = fixture_root / "fixture.db"
+    database_url = f"sqlite+pysqlite:///{database.as_posix()}"
+    command = [
+        sys.executable,
+        str(RUN_AGENT_PATH),
+        "user-query",
+        "请使用 code-review Skill 完成受控代码评审。",
+        "--fixture",
+        fixture_name,
+        "--sandbox",
+        sandbox,
+        "--dry-run",
+        "--model-mode",
+        "fake",
+        "--db-url",
+        database_url,
+        "--output-dir",
+        str(output_dir),
+    ]
+    started = time.monotonic()
+    try:
         completed = subprocess.run(
-            [
-                sys.executable,
-                str(RUN_AGENT_PATH),
-                "review",
-                "--fixture",
-                fixture_name,
-                "--sandbox",
-                sandbox,
-                "--dry-run",
-                "--model-mode",
-                "fake",
-                "--db-url",
-                f"sqlite+pysqlite:///{database.as_posix()}",
-                "--output-dir",
-                str(output_dir),
-            ],
+            command,
             cwd=fixture_root,
             env=_sanitized_environment(fixture_root),
             check=False,
             capture_output=True,
             encoding="utf-8",
             text=True,
-            timeout=110,
+            timeout=HARD_LIMIT_MS / 1000,
         )
-        report_path = output_dir / "review_report.json"
-        markdown_path = output_dir / "review_report.md"
-        if completed.returncode != 0 or not report_path.is_file() or not markdown_path.is_file():
-            raise RuntimeError("public_fixture_execution_failed")
+    except subprocess.TimeoutExpired:
+        return (
+            {
+                "fixture": fixture_name,
+                "entrypoint": "agent",
+                "skill_tools": [],
+                "status": "timeout",
+                "duration_ms": int((time.monotonic() - started) * 1000),
+                "reports_verified": False,
+                "database_verified": False,
+            },
+            0,
+        )
+
+    duration_ms = int((time.monotonic() - started) * 1000)
+    try:
+        terminal = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        terminal = {}
+    report_path = output_dir / "review_report.json"
+    markdown_path = output_dir / "review_report.md"
+    report_files_exist = report_path.is_file() and markdown_path.is_file()
+    task_id = terminal.get("task_id") if isinstance(terminal, Mapping) else None
+    bundle: Mapping[str, Any] | None = None
+    if database.is_file() and isinstance(task_id, str):
+        store = SqlReviewStore(database_url)
+        try:
+            store.initialize()
+            bundle = store.get_task_bundle(task_id)
+        finally:
+            store.close()
+    database_verified = bundle is not None
+    plaintext_hits = 0
+    if report_files_exist:
         report_text = report_path.read_text(encoding="utf-8")
         markdown_text = markdown_path.read_text(encoding="utf-8")
-        database_text = database.read_bytes().decode("utf-8", errors="ignore")
-        plaintext_hits += sum(
-            _contains_plaintext_secret(value)
-            for value in (report_text, markdown_text, database_text, completed.stdout, completed.stderr)
-        )
-        passed += 1
-    return passed, plaintext_hits
+        plaintext_hits += _contains_plaintext_secret(report_text)
+        plaintext_hits += _contains_plaintext_secret(markdown_text)
+    if database.is_file():
+        plaintext_hits += _contains_plaintext_secret(database.read_bytes().decode("utf-8", errors="ignore"))
+    if bundle is not None:
+        plaintext_hits += _contains_plaintext_secret(json.dumps(bundle, ensure_ascii=False, sort_keys=True))
+    plaintext_hits += _contains_plaintext_secret(completed.stdout)
+    plaintext_hits += _contains_plaintext_secret(completed.stderr)
+    tool_sequence = terminal.get("skill_tools") if isinstance(terminal, Mapping) else []
+    if not isinstance(tool_sequence, list) or not all(isinstance(tool, str) for tool in tool_sequence):
+        tool_sequence = []
+    status = terminal.get("status") if isinstance(terminal, Mapping) else "failed"
+    if not isinstance(status, str):
+        status = "failed"
+    return (
+        {
+            "fixture": fixture_name,
+            "entrypoint": terminal.get("entrypoint") if isinstance(terminal, Mapping) else "unknown",
+            "skill_tools": tool_sequence,
+            "status": status if completed.returncode == 0 else "failed",
+            "duration_ms": duration_ms,
+            "reports_verified": report_files_exist,
+            "database_verified": database_verified,
+        },
+        plaintext_hits,
+    )
+
+
+def _fixture_run_passed(run: Mapping[str, Any]) -> bool:
+    """判定一条独立 Agent fixture 是否满足工具序列、产物、持久化与单任务时延门禁。"""
+
+    return bool(
+        run.get("entrypoint") == "agent"
+        and run.get("skill_tools") == ["skill_load", "skill_run"]
+        and run.get("status") in {"completed", "completed_with_warnings"}
+        and isinstance(run.get("duration_ms"), int)
+        and 0 < run["duration_ms"] <= HARD_LIMIT_MS
+        and run.get("reports_verified") is True
+        and run.get("database_verified") is True
+    )
+
+
+def _run_fixture_suite(work_root: Path, sandbox: str) -> tuple[list[dict[str, Any]], int]:
+    """逐条执行八个独立 Agent 审查任务，汇总单条时延而不把总墙钟时间作为 AC6 门禁。"""
+
+    fixture_runs: list[dict[str, Any]] = []
+    plaintext_hits = 0
+    for fixture_name in FIXTURE_NAMES:
+        fixture_run, fixture_plaintext_hits = _run_fixture_agent(work_root, fixture_name, sandbox)
+        fixture_runs.append(fixture_run)
+        plaintext_hits += fixture_plaintext_hits
+    return fixture_runs, plaintext_hits
 
 
 def _contains_plaintext_secret(value: str) -> int:
@@ -440,17 +519,17 @@ def _write_history(database: Path, summary: Mapping[str, Any]) -> None:
         connection.close()
 
 
-def _hard_gates_pass(metrics: Mapping[str, Any], fixture_passed: int, duration_ms: int) -> bool:
-    """按锁定阈值判定离线 CI 门禁；任何一项不足均以非零退出。"""
+def _hard_gates_pass(metrics: Mapping[str, Any], fixture_runs: Sequence[Mapping[str, Any]]) -> bool:
+    """按锁定阈值判定离线 CI 门禁；AC6 只约束每条独立 Agent 审查而不约束聚合评测总时长。"""
 
     return bool(
-        fixture_passed == len(FIXTURE_NAMES)
+        len(fixture_runs) == len(FIXTURE_NAMES)
+        and all(_fixture_run_passed(run) for run in fixture_runs)
         and metrics.get("high_risk_recall", 0.0) >= 0.80
         and metrics.get("finding_false_positive_share", 1.0) <= 0.15
         and metrics.get("redaction_detection_rate", 0.0) >= 0.95
         and metrics.get("plaintext_hits", 1) == 0
         and metrics.get("benign_secret_false_positives", 1) == 0
-        and duration_ms <= HARD_LIMIT_MS
     )
 
 
@@ -468,6 +547,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """执行八条 fixture、公开语料与盲区观测，写摘要并依据硬门禁返回退出码。"""
 
     args = _build_parser().parse_args(argv)
+    configure_safe_logging("WARNING")
     started = time.monotonic()
     try:
         corpus = _load_json(CORPUS_PATH)
@@ -478,7 +558,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ignore_cleanup_errors=True,
         ) as temporary_directory:
             work_root = Path(temporary_directory)
-            fixture_passed, fixture_plaintext_hits = _run_fixture_suite(work_root, args.sandbox)
+            fixture_runs, fixture_plaintext_hits = _run_fixture_suite(work_root, args.sandbox)
             corpus_result = _evaluate_corpus(corpus, work_root, args.sandbox)
             blind_spot_cases, blind_spot_findings = _observe_blind_spots(blind_spots, work_root, args.sandbox)
         duration_ms = int((time.monotonic() - started) * 1000)
@@ -496,7 +576,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "python": platform.python_version(),
             "platform": platform.platform(),
             "docker_available": shutil.which("docker") is not None,
-            "fixture_summary": {"passed": fixture_passed, "total": len(FIXTURE_NAMES)},
+            "fixture_summary": {
+                "passed": sum(_fixture_run_passed(run) for run in fixture_runs),
+                "total": len(FIXTURE_NAMES),
+            },
+            "fixture_runs": fixture_runs,
             "corpus": corpus_summary,
             "blind_spot_observation": {"findings": blind_spot_findings},
             "metrics": metrics,
@@ -507,9 +591,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         _write_summary(args.output_dir, summary)
         if args.write_db is not None:
             _write_history(args.write_db, summary)
-        status = "passed" if _hard_gates_pass(metrics, fixture_passed, duration_ms) else "failed"
+        status = "passed" if _hard_gates_pass(metrics, fixture_runs) else "failed"
         print(json.dumps({"status": status}, ensure_ascii=False))
-        return 0 if _hard_gates_pass(metrics, fixture_passed, duration_ms) else 1
+        return 0 if _hard_gates_pass(metrics, fixture_runs) else 1
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
         print(json.dumps({"status": "failed", "error": "evaluation_runtime_error"}, ensure_ascii=False))
         return 2

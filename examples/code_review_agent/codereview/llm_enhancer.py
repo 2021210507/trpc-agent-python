@@ -13,17 +13,68 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import warnings
 from collections.abc import AsyncGenerator, Mapping
 from copy import deepcopy
 from typing import Any
 
-from trpc_agent_sdk.agents import LlmAgent
-from trpc_agent_sdk.models import LLMModel, LlmResponse, OpenAIModel
-from trpc_agent_sdk.runners import Runner
-from trpc_agent_sdk.sessions import InMemorySessionService
-from trpc_agent_sdk.types import Content, Part
+from langchain_core._api.deprecation import LangChainPendingDeprecationWarning
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"The default value of `allowed_objects` will change.*",
+    category=LangChainPendingDeprecationWarning,
+)
+
+
+def _import_sdk_agent_dependencies() -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:
+    """在 SDK 延迟导入期间仅过滤已知无路径价值的弃用警告，其余警告保持原样。"""
+
+    original_showwarning = warnings.showwarning
+
+    def safe_showwarning(
+        message: Warning | str,
+        category: type[Warning],
+        filename: str,
+        lineno: int,
+        file: Any = None,
+        line: str | None = None,
+    ) -> None:
+        """丢弃唯一已知的 LangGraph 弃用提示，避免其携带 site-packages 绝对路径进入终端。"""
+
+        if (
+            issubclass(category, LangChainPendingDeprecationWarning)
+            and str(message).startswith("The default value of `allowed_objects` will change")
+        ):
+            return
+        original_showwarning(message, category, filename, lineno, file, line)
+
+    warnings.showwarning = safe_showwarning
+    try:
+        from trpc_agent_sdk.agents import LlmAgent
+        from trpc_agent_sdk.models import LLMModel, LlmResponse, OpenAIModel
+        from trpc_agent_sdk.runners import Runner
+        from trpc_agent_sdk.sessions import InMemorySessionService
+        from trpc_agent_sdk.types import Content, Part
+
+        return LlmAgent, LLMModel, LlmResponse, OpenAIModel, Runner, InMemorySessionService, Content, Part
+    finally:
+        warnings.showwarning = original_showwarning
+
+
+(
+    LlmAgent,
+    LLMModel,
+    LlmResponse,
+    OpenAIModel,
+    Runner,
+    InMemorySessionService,
+    Content,
+    Part,
+) = _import_sdk_agent_dependencies()
 
 from agent.prompts import ENHANCEMENT_INSTRUCTION
+from codereview.model_runtime import build_real_model
 from codereview.redaction import redact_data
 
 
@@ -197,7 +248,7 @@ class LlmEnhancer:
         model_name = environment.get("TRPC_AGENT_MODEL_NAME", "")
         if not api_key or not base_url or not model_name:
             raise ValueError("real_model_configuration_missing")
-        return OpenAIModel(model_name, api_key=api_key, base_url=base_url)
+        return build_real_model(environment)
 
     def _merge_text_only(
         self,

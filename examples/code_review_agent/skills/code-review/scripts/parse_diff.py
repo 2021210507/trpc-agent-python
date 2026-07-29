@@ -22,7 +22,7 @@ _OUTPUT_PATH = Path("out") / "parsed.json"
 
 
 def _load_change_set(input_path: Path) -> ChangeSet:
-    """Load the constrained diff payload without printing its contents."""
+    """读取受控 diff 载荷，但不打印其中任何原始内容。"""
 
     payload = json.loads(input_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -37,7 +37,7 @@ def _load_change_set(input_path: Path) -> ChangeSet:
 
 
 def _summary(change_set: ChangeSet) -> Dict[str, Any]:
-    """Return metadata only; raw code and hunk contents cannot leave the sandbox."""
+    """仅返回元数据，禁止原始代码和 hunk 内容离开沙箱。"""
 
     return {
         "schema_version": "1.0.0",
@@ -63,7 +63,7 @@ def _summary(change_set: ChangeSet) -> Dict[str, Any]:
 
 
 def main() -> int:
-    """Read the fixed workspace input and write one canonical summary."""
+    """读取固定 workspace 输入，并写入一份规范化解析摘要。"""
 
     change_set = _load_change_set(_INPUT_PATH)
     _OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

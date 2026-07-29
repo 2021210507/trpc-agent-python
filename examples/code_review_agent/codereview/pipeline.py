@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, Protocol
@@ -25,6 +26,7 @@ from codereview.metrics import MetricsCollector
 from codereview.redaction import contains_plaintext_secret, redact_data
 from codereview.report import CanonicalReportWriter, ReportValidationError
 from codereview.store import ReviewStore
+from codereview.trace import TraceSink, emit_trace
 
 if TYPE_CHECKING:
     from lib.diff_parser import ChangeSet
@@ -34,6 +36,7 @@ _FILTER_ACTIONS = {"allow", "deny", "needs_human_review"}
 _RUN_STATUSES = {"ok", "failed", "timeout", "blocked", "error"}
 _RUNTIME_TYPES = {"container", "cube", "local", "fake"}
 _INPUT_NAMES = ("diff_file", "repo_path", "files", "fixture")
+_LOGGER = logging.getLogger("code_review_agent")
 
 
 class PipelineFatalError(RuntimeError):
@@ -309,14 +312,28 @@ class ReviewPipeline:
             environ=model_environment,
         )
 
-    def run(self, **input_options: Any) -> PipelineResult:
-        """执行八阶段评审并返回 JSON/Markdown/数据库共享的 canonical 报告。"""
+    def run(
+        self,
+        *,
+        entrypoint_tool_call_count: int = 0,
+        trace: TraceSink | None = None,
+        **input_options: Any,
+    ) -> PipelineResult:
+        """执行八阶段评审，并把入口已发生的受控工具调用计入 canonical 审计指标。"""
 
         task_id = self._task_id_factory()
         if not isinstance(task_id, str) or not task_id.strip():
             raise PipelineFatalError("pipeline_task_id_invalid")
         input_type = _source_input_type(input_options)
         metrics = MetricsCollector(task_id=task_id, runtime_type=self._sandbox.runtime_type)
+        metrics.record_tool_call(entrypoint_tool_call_count)
+        emit_trace(
+            trace,
+            "pipeline.started",
+            input_type=input_type,
+            runtime_type=self._sandbox.runtime_type,
+        )
+        _LOGGER.info("Pipeline started: input_type=%s runtime=%s", input_type, self._sandbox.runtime_type)
         warnings: list[dict[str, str]] = []
         filter_events: list[dict[str, Any]] = []
         sandbox_runs: list[dict[str, Any]] = []
@@ -351,6 +368,18 @@ class ReviewPipeline:
                 )
                 raise PipelineFatalError("pipeline_input_unavailable") from exc
             change_set = input_result.change_set
+            emit_trace(
+                trace,
+                "pipeline.input_loaded",
+                source_kind=change_set.source_kind,
+            )
+            _LOGGER.info(
+                "Input loaded: source=%s files=%s hunks=%s changed_lines=%s",
+                change_set.source_kind,
+                change_set.file_count,
+                change_set.hunk_count,
+                change_set.additions,
+            )
             metrics.record_stage_duration(
                 "parse",
                 (perf_counter() - parse_started) * 1000,
@@ -374,6 +403,8 @@ class ReviewPipeline:
                 action = "deny"
                 warnings.append(_warning("invalid_filter_action", stage="governance"))
             metrics.record_filter_action(action)
+            emit_trace(trace, "pipeline.filter_decision", action=action)
+            _LOGGER.info("Filter decision: action=%s", action.upper())
             raw_events = decision.get("events", ())
             if isinstance(raw_events, (list, tuple)):
                 filter_events.extend(
@@ -389,6 +420,12 @@ class ReviewPipeline:
 
             if action == "allow":
                 sandbox_started = perf_counter()
+                emit_trace(
+                    trace,
+                    "pipeline.sandbox_started",
+                    runtime_type=self._sandbox.runtime_type,
+                )
+                _LOGGER.info("Sandbox started: runtime=%s", self._sandbox.runtime_type)
                 raw_sandbox_result = self._sandbox.execute(
                     task_id=task_id,
                     change_set=change_set,
@@ -401,6 +438,21 @@ class ReviewPipeline:
                         0,
                     )
                 sandbox_runs.append(sandbox_run)
+                emit_trace(
+                    trace,
+                    "pipeline.sandbox_finished",
+                    status=sandbox_run["status"],
+                    candidate_count=len(_safe_candidates(raw_sandbox_result)),
+                    timed_out=sandbox_run["timed_out"],
+                    truncated=sandbox_run["truncated"],
+                )
+                _LOGGER.info(
+                    "Sandbox finished: status=%s duration_ms=%s timed_out=%s truncated=%s",
+                    sandbox_run["status"],
+                    sandbox_run["duration_ms"],
+                    sandbox_run["timed_out"],
+                    sandbox_run["truncated"],
+                )
                 metrics.record_sandbox_run(sandbox_run["duration_ms"])
                 candidates.extend(_safe_candidates(raw_sandbox_result))
                 if sandbox_run["status"] != "ok":
@@ -531,6 +583,20 @@ class ReviewPipeline:
             self._store.save_report(task_id, self._report_writer.to_store_payload(canonical))
             written = self._report_writer.write(canonical, self._output_dir)
             self._store.update_task(task_id, status=status)
+            emit_trace(
+                trace,
+                "pipeline.report_persisted",
+                status=status,
+                finding_count=len(canonical["findings"]),
+                needs_human_review_count=len(canonical["needs_human_review"]),
+                warning_count=len(canonical["warnings"]),
+            )
+            _LOGGER.info(
+                "Canonical report persisted: findings=%s warnings=%s needs_human_review=%s",
+                len(canonical["findings"]),
+                len(canonical["warnings"]),
+                len(canonical["needs_human_review"]),
+            )
         except (ReportValidationError, OSError, ValueError, KeyError) as exc:
             self._store.update_task(
                 task_id,

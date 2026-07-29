@@ -261,16 +261,40 @@ Telemetry span 属性采用白名单：只允许脱敏 task id、状态、阶段
 
 ### 2.11 CLI 与运行模式
 
-`run_agent.py` 四子命令：
+`run_agent.py` 五个子命令：
 
-- `review --diff-file|--repo-path|--files|--fixture [--dry-run] [--sandbox container|cube|local] [--model-mode fake|real|off] [--fail-on-severity high|critical] [--db-url URL] [--out DIR]`
-- `show --task-id <ID>`：输出全链路 bundle
+- `review --diff-file|--repo-path|--files|--fixture [--dry-run] [--sandbox container|cube|local] [--model-mode fake|real|off] [--trace] [--log-level DEBUG|INFO|WARNING] [--fail-on-severity high|critical] [--db-url URL] [--output-dir DIR]`：直接调用唯一 `ReviewPipeline`，用于 CI 和确定性自动化。
+- `user-query "<natural-language review intent>" --diff-file|--repo-path|--files|--fixture [--dry-run] [--sandbox container|cube|local] [--model-mode fake|real|off] [--trace] [--log-level DEBUG|INFO|WARNING] [--fail-on-severity high|critical] [--db-url URL] [--output-dir DIR]`：始终经 SDK `LlmAgent + SkillToolSet` 触发受控 Skill 链；自然语言仅表达意图，四种输入必须由结构化参数显式指定。
+- `show <task_id>`：输出全链路 bundle
 - `list`：列出历史任务
 - `init-db`：幂等初始化
 
 `--dry-run` = fake model（固定模板走与 real 完全相同的 LlmAgent+Runner 链路），**不**切换 sandbox。无 Docker 时必须同时显式传 `--sandbox local`，否则严格 container 默认会直接报错。零 Key + 无 Docker 的推荐命令：`python run_agent.py review --fixture 01_clean_simple --dry-run --sandbox local`。pytest 单测注入 fake runtime 是第三条路径，不冒充 CLI dry-run。
 
 四种输入由互斥参数组强制只能选择一个。本期不提供 `--command`、`--run-tests` 或 `--llm-denoise`；任意命令和目标仓库测试不得通过隐藏参数进入当前实现。
+
+`review` 直接调用唯一 `ReviewPipeline`；`user-query` 是唯一公开的 Agent 入口，SDK
+`LlmAgent + SkillToolSet` 必须产生可观察的 `skill_load("code-review") → skill_run(...)`
+工具调用，再由受控 `skill_run` 适配器委托同一 pipeline，不能产生第二套检测或持久化逻辑。
+宿主在创建 Agent 前验证四选一结构化输入、路径、大小、编码和 diff 格式；不得让模型从自由文本推测
+任意文件路径、命令、环境变量或未登记脚本。无效输入以退出码 2 拒绝，且不调用模型、Filter 或沙箱。
+`skill_run` 对模型只暴露一次性 review request id；固定 Skill、script_id、argv、输入/输出路径、
+环境、超时和输出限额必须由宿主结合 manifest 构造，原始 diff、宿主路径和命令字符串不得进入
+模型上下文。未先成功 `skill_load`、Filter 非 ALLOW 或 request id 无效时，`skill_run` 必须零
+沙箱副作用。成功的 CLI JSON 必须包含 `task_id`、状态、实际 sandbox、入口类型以及
+`report_files.json` / `report_files.markdown` 的完整输出位置，方便人工和 CI 直接定位产物；路径
+只输出到当前终端，绝不写入 report、数据库、Telemetry 或日志。维护者的完整 PowerShell 命令、
+Docker 前置检查、16 个 fixture、模型模式和故障排查统一见
+`examples/code_review_agent/OPERATIONS.md`；真实模型的三项白名单变量由该目录 `.env` 读取，
+runtime 类型、网络策略和输出目录必须显式通过 CLI 参数设置，不得藏在 `.env`。
+
+`--trace` 是显式终端诊断模式：以 stderr JSON Lines 流式显示受控 query 解析、SDK
+`skill_load` / `skill_run`、Filter、sandbox、Pipeline 和持久化状态；stdout 仍只输出最终 CLI JSON。
+trace 字段只能包含固定事件名、安全枚举、计数、状态和布尔值，禁止输出模型私有推理、原始 query/diff、
+代码/evidence、request id、命令、环境变量值和宿主路径；trace 不写入报告、数据库或 Telemetry。默认 `INFO`
+日志也仅写 stderr，显示阶段、计数、固定状态码、耗时、实际 container ID 与终端可见的报告位置；`DEBUG`
+可额外显示仓库相对文件路径、script_id 和已脱敏输出摘要。所有日志级别均禁止原始 diff、代码、evidence、
+工具完整参数、workspace/request ID、环境变量和凭据。SDK 原始 INFO 固定降为 WARNING，避免暴露源码绝对路径和 workspace 标识。
 
 **CLI 退出码约定**（`review` 子命令；`show`/`list`/`init-db` 成功 0、致命错误 2）：
 
@@ -402,7 +426,7 @@ Telemetry span 属性采用白名单：只允许脱敏 task id、状态、阶段
 | 高危问题 Recall（critical/high，代理语料） | ≥ 0.80 | AC2 代理 |
 | findings 桶 finding-level 误报占比 `FP/(TP+FP)` | ≤ 0.15 | AC2 代理 |
 | 脱敏检出率 | ≥ 0.95 | AC5 |
-| fake model 完整评测流程墙钟时间 | ≤ 120 s | AC6 |
+| 8 条 public fixture 的独立 fake Agent 审查墙钟时间 | 每条 ≤ 120 s | AC6 |
 | Precision / Recall / F1 | 输出到摘要；F1 **不设单独硬阈值**（由上两项 Recall/FP 约束即可，避免三重冲突） | 观测指标 |
 
 **明确不是硬门禁的**：
@@ -417,7 +441,7 @@ Telemetry span 属性采用白名单：只允许脱敏 task id、状态、阶段
 
 | 路径 | sandbox | model | 用途 |
 |------|---------|-------|------|
-| `evaluate.py`（普通 CI / 本地门禁，默认） | **显式 `local`** | fake | ≤120s 硬门禁统一测量口径；摘要记录 runtime/OS/是否有 Docker |
+| `evaluate.py`（普通 CI / 本地门禁，默认） | **显式 `local`** | fake | 8 条 fixture 各自经 Agent+Skill 独立运行且每条 ≤120s；聚合耗时仅观测；摘要记录 runtime/OS/是否有 Docker |
 | `evaluate.py --sandbox container` | container | fake | 额外结果；Docker 可用时跑，**不与 local 基准耗时直接比较** |
 | `run_agent.py review`（生产默认） | **严格 container** | fake\|real\|off | 无 Docker 直接报错；不受 evaluate 默认影响 |
 | pytest 单元 / pipeline 单测 | 注入 fake workspace | fake/off | 测编排与落库，不冒充「脚本真执行」 |
@@ -426,7 +450,7 @@ Telemetry span 属性采用白名单：只允许脱敏 task id、状态、阶段
 硬约束：
 
 1. **evaluate 默认 local 必须是显式选择**（代码与文档都写成 `--sandbox local`），不是 `--dry-run` 偷偷换沙箱——CLI 的 dry-run 仍只代表 fake model，沙箱语义不变。
-2. **evaluate 默认路径禁止用 fake workspace**：必须真跑仓库自带的可信 Skill 脚本 + 固定 fixture，否则无法证明脚本执行过；仅允许执行本仓库 `skills/code-review/scripts/` 与 fixtures，禁止用户自定义命令混入门禁路径。
+2. **evaluate 默认路径禁止用 fake workspace**：8 条 fixture 必须各自以独立 `user-query` 任务真跑 Agent 的 `skill_load → skill_run` 与仓库自带可信 Skill 脚本，并各自验证 JSON、Markdown、SQLite 和单条时延；公开代理语料可直跑可信 Skill 脚本计算规则指标。仅允许执行本仓库 `skills/code-review/scripts/` 与 fixtures，禁止用户自定义命令混入门禁路径。
 3. local 模式下 Filter 仍运行，并把「隔离与网络策略不可强制证明」降级告警写入 warnings；cube 默认拒绝的原因是当前 SDK 无法提供具体实例无出口/受控网关的可验证证明，而不是 `network_allowed=True` 字段本身。container 集成测试必须验证实际生效的 `network_mode=none`。
 
 **与 pytest 的分工**：pytest 负责 unit、integration 与 fixture 驱动的 e2e；`evaluate.py` 负责跨 fixture 的聚合指标门禁。CI 建议顺序：`pytest examples/code_review_agent/tests/ -q`（跳过 container/real_llm）→ `python examples/code_review_agent/evaluate.py --sandbox local`（model=fake + sandbox=local）。
@@ -457,6 +481,7 @@ Telemetry span 属性采用白名单：只允许脱敏 task id、状态、阶段
 ```
 入口层    run_agent.py (CLI)          agent/ (LlmAgent + SkillToolSet)
               │                              │
+              │                    skill_load → 受控 skill_run
               └──────────┬───────────────────┘
                          ▼
 应用层    codereview/pipeline.py  ReviewPipeline.run()  ← 唯一检测链路
@@ -646,9 +671,9 @@ examples/code_review_agent/
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 验收标准 | 测试方法 |
 |---------|---------|------|---------|---------|---------|
 | D1 | LLM 增强层（codereview/llm_enhancer.py，fake|real|off） | [x] | 2026-07-27 | fake 与 real 走相同 LlmAgent+Runner 路径；仅改写 recommendation/summary/复核提示；输入全量脱敏；不得改变 finding identity/rule/severity/confidence/bucket/dedup；有 Key 也不自动 real | tests/integration/test_llm_enhancer.py：canonical finding 对象前后逐字段一致；仅允许文本增强字段变化；LLM 输入无明文 |
-| D2 | Agent 入口（agent/agent.py + prompts.py，LlmAgent+SkillToolSet） | [x] | 2026-07-27 | 经 SkillRepository 加载 code-review skill；Agent 与 CLI 共享同一 manifest、Filter、sandbox、storage 和 ReviewPipeline；输出 canonical finding 集合一致 | tests/integration/test_agent_entry.py：双入口一致性断言；两入口对未注册脚本同样拒绝 |
+| D2 | Agent 入口（agent/agent.py + prompts.py，LlmAgent+SkillToolSet） | [x] | 2026-07-28 | 经 SkillRepository 发现 code-review skill；Agent 真实产生 `skill_load → skill_run` 工具调用，且受控 `skill_run` 只接受一次性 request id，由宿主按 manifest 构造固定执行计划；未 load、无效 request 或 Filter 非 ALLOW 均零沙箱副作用；Agent 与 CLI 共享同一 manifest、Filter、sandbox、storage 和 ReviewPipeline，原始 diff/宿主路径/命令不进模型，输出 canonical finding 集合一致 | tests/integration/test_agent_entry.py：工具事件顺序、双入口 finding 一致性、无效 request/跳过 load/未注册脚本零执行；tests/e2e/test_cli.py：自然语言 fixture query 生成 JSON+MD+DB |
 | D3 | 8 条公开 fixture + e2e（tests/fixtures/diffs/ + tests/e2e/test_fixtures_e2e.py） | [x] | 2026-07-27 | 4.3 表 8 条全交付；逐条断言 findings/桶/状态/JSON+MD+DB；08 号验证“真实密钥能检出且所有出口无明文”及注释占位符降噪 | pytest tests/e2e/test_fixtures_e2e.py 参数化 8/8 通过 + 日志/文件/DB 字节级扫描 |
-| D4 | 评测语料 + evaluate.py CI 硬门禁 | [x] | 2026-07-27 | 4.4 语料规模与 blind-spot 观测集达标；匹配键 (file,line,category)；硬门禁：8 fixture、高危 Recall≥0.8、finding-level FP 占比≤0.15、脱敏≥0.95、≤120s；强制 fake+local；摘要含版本/配置/环境；默认不写 DB；README 明示 AC2 为代理 | python examples/code_review_agent/evaluate.py --sandbox local（期望 exit=0）+ tests/e2e/test_evaluate.py：禁止 real/LLM 降噪参数，门禁失败 exit 非零 |
+| D4 | 评测语料 + evaluate.py CI 硬门禁 | [x] | 2026-07-28 | 4.4 语料规模与 blind-spot 观测集达标；匹配键 (file,line,category)；8 条 fixture 各自经 fake+local Agent/Skill 运行并各自 ≤120s，高危 Recall≥0.8、finding-level FP 占比≤0.15、脱敏≥0.95；聚合评测耗时只观测；摘要含单条时延、版本/配置/环境；默认不写 DB；README 明示 AC2 为代理 | python examples/code_review_agent/evaluate.py --sandbox local（期望 exit=0）+ tests/e2e/test_evaluate.py：断言 8 条 Agent 时延/工具序列，禁止 real/LLM 降噪参数，门禁失败 exit 非零 |
 
 #### 阶段 E：收尾
 
@@ -658,6 +683,7 @@ examples/code_review_agent/
 | E2 | README + 300–500 字设计说明 + 验收总检 | [x] | 2026-07-27 | README 含用法/AC 代理口径/安全信任域/manifest/沙箱 local 指引/输出限制；设计说明覆盖题目全部主题；风险表完整；AC1–AC8 逐条核对 | 全量 pytest + flake8 + schema 校验 + AC 对照表逐项打勾 |
 | E3 | 8 条 complex fixture + 成对 E2E | [x] | 2026-07-27 | 8 条 simple fixture 全部保留；每类新增 1 条 60–150 行新增代码、至少双文件且包含正常实现/风险/干扰项的 complex diff；16 条均验证 JSON+MD+DB，complex 逐条保持类别、分桶、去重和脱敏契约；evaluate 仍使用 simple 8 条门禁 | tests/e2e/test_fixtures_e2e.py：8 条 complex 逐条聚焦通过 + 8 条 simple 回归 + 普通全量回归 |
 | E4 | fixture simple/complex 命名迁移 | [x] | 2026-07-27 | 16 条 fixture 仅以 `_simple` 或 `_complex` 命名；CLI、Agent、Container、real-model、evaluate、文档、QA 与精确 E2E 断言全部使用新名称；evaluate 仍只统计 simple 8 条，禁止旧名别名残留 | tests/e2e/test_fixtures_e2e.py：16 条通过；tests/e2e/test_evaluate.py：8/8 simple 门禁；全量普通回归 |
+| E5 | 维护者运行手册 + Agent CLI 入口 + 显式产物路径 | [x] | 2026-07-28 | README 直达完整 `OPERATIONS.md`；手册同时给出 Windows PowerShell 与 Linux/macOS Bash 命令，覆盖 `.env.example`、Docker/本地/Cube 前置、CLI 四输入、16 fixture、fake/real/off、direct/Agent 入口、DB/报告查询、pytest/evaluate/lint 和故障排查；公开 `user-query` 经 SDK Agent+SkillToolSet 复用同一 pipeline，支持四种结构化输入并在 Agent 前拒绝无效输入；`--via-agent`/`ask` 不保留；INFO 安全显示实际 container ID、阶段、计数、耗时和报告位置，SDK 原始 INFO 降为 WARNING；review 成功 JSON 返回完整 JSON/Markdown 产物位置 | tests/e2e/test_cli.py：direct/`user-query` 都生成报告并返回入口/路径，四输入、无效输入零 Agent/Filter/沙箱副作用、INFO 无敏感字段且 container ID 可见；tests/e2e/test_release_docs.py：维护手册、配置模板和 PowerShell/Bash 关键命令链接存在；维护者按 OPERATIONS.md 手工执行 local/container/real 路径 |
 
 ## 7. 未来规划
 

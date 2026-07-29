@@ -11,10 +11,12 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
+from contextvars import ContextVar
 import hashlib
 import json
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -108,6 +110,14 @@ class SandboxInvocationContext:
     invocation_id: str
 
 
+@dataclass(frozen=True)
+class AgentWorkspaceBinding:
+    """保存本次 Agent skill_load 已创建的 workspace 标识和真实调用上下文。"""
+
+    workspace_id: str
+    context: Any
+
+
 class SandboxBudget:
     """在宿主启动 runtime 前集中预检并累计单次与全局沙箱预算。"""
 
@@ -169,7 +179,41 @@ class SdkSkillSandbox:
         self._config = ReviewConfig() if config is None else config
         self._budget = SandboxBudget(self._config)
         self._workspaces: dict[str, WorkspaceInfo] = {}
+        self._workspace_ids: dict[str, str] = {}
         self._contexts: dict[str, Any] = {}
+        self._agent_workspace: ContextVar[AgentWorkspaceBinding | None] = ContextVar(
+            "code_review_agent_workspace",
+            default=None,
+        )
+
+    @contextmanager
+    def bind_agent_workspace(self, workspace_id: str, context: Any) -> Iterator[None]:
+        """把 skill_load 的 session workspace 限定绑定到当前 skill_run/pipeline 调用。"""
+
+        if not workspace_id:
+            raise ValueError("agent_workspace_id_required")
+        token = self._agent_workspace.set(
+            AgentWorkspaceBinding(workspace_id=workspace_id, context=context)
+        )
+        try:
+            yield
+        finally:
+            self._agent_workspace.reset(token)
+
+    @property
+    def container_id(self) -> str | None:
+        """返回 SDK 容器 runtime 的实际 Docker ID，仅供终端 INFO 诊断且绝不持久化。"""
+
+        if self.runtime_type != "container":
+            return None
+        client = getattr(self._runtime, "container", None)
+        container = getattr(client, "container", None)
+        container_id = getattr(container, "id", None)
+        if not isinstance(container_id, str) or len(container_id) != 64:
+            return None
+        if any(character not in "0123456789abcdef" for character in container_id.lower()):
+            return None
+        return container_id
 
     def execute(self, *, task_id: str, change_set: Any, config: ReviewConfig) -> dict[str, Any]:
         """同步执行一个已授权的 run_checks 请求，并把任何运行失败收敛为结构化数据。"""
@@ -188,11 +232,13 @@ class SdkSkillSandbox:
         if task_id not in self._workspaces:
             return
         context = self._contexts.get(task_id)
+        workspace_id = self._workspace_ids.get(task_id, task_id)
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            asyncio.run(self._runtime.manager(context).cleanup(task_id, context))
+            asyncio.run(self._runtime.manager(context).cleanup(workspace_id, context))
             self._workspaces.pop(task_id, None)
+            self._workspace_ids.pop(task_id, None)
             self._contexts.pop(task_id, None)
             return
         raise RuntimeError("sandbox_event_loop_unsupported")
@@ -208,11 +254,31 @@ class SdkSkillSandbox:
         except SandboxBudgetExceeded as exc:
             return _sandbox_error(str(exc), status="blocked")
         try:
-            context = SandboxInvocationContext(invocation_id=new_invocation_context_id())
-            workspace = await self._runtime.manager(context).create_workspace(task_id, context)
+            binding = self._agent_workspace.get()
+            context = (
+                binding.context
+                if binding is not None
+                else SandboxInvocationContext(invocation_id=new_invocation_context_id())
+            )
+            workspace_id = binding.workspace_id if binding is not None else task_id
+            workspace = await self._runtime.manager(context).create_workspace(workspace_id, context)
             self._workspaces[task_id] = workspace
+            self._workspace_ids[task_id] = workspace_id
             self._contexts[task_id] = context
-            staged = await stage_code_review_skill(self._runtime, workspace, self._skill_root, ctx=context)
+            if binding is None:
+                staged = await stage_code_review_skill(
+                    self._runtime,
+                    workspace,
+                    self._skill_root,
+                    ctx=context,
+                )
+            else:
+                staged = await verify_loaded_code_review_skill(
+                    self._runtime,
+                    workspace,
+                    self._skill_root,
+                    ctx=context,
+                )
             payload = _change_set_payload(change_set)
             uses_host_local_workspace = (
                 self.runtime_type == "local" and _local_workspace_path(workspace, ".") is not None
@@ -406,6 +472,37 @@ async def stage_code_review_skill(
         raise SandboxStageError("staged_script_integrity_mismatch")
     return StagedSkill(
         workspace_skill_dir=result.workspace_skill_dir,
+        entrypoint=workspace_entrypoint,
+        script_id=script_id,
+        sha256=actual_sha256,
+    )
+
+
+async def verify_loaded_code_review_skill(
+    runtime: BaseWorkspaceRuntime,
+    workspace: WorkspaceInfo,
+    skill_root: Path,
+    *,
+    script_id: str = _RUN_CHECKS_SCRIPT_ID,
+    ctx: Any = None,
+) -> StagedSkill:
+    """复验 skill_load 已复制到当前 workspace 的固定入口，不再次 staging Skill。"""
+
+    resolved_root = _validate_skill_root(skill_root)
+    entrypoint, expected_sha256 = _manifest_entry(resolved_root, script_id)
+    workspace_skill_dir = f"skills/{_SKILL_NAME}"
+    workspace_entrypoint = f"{workspace_skill_dir}/scripts/{entrypoint}"
+    actual_content = await _staged_entrypoint_content(
+        runtime,
+        workspace,
+        workspace_entrypoint,
+        ctx=ctx,
+    )
+    actual_sha256 = hashlib.sha256(actual_content.encode("utf-8")).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise SandboxStageError("loaded_skill_script_integrity_mismatch")
+    return StagedSkill(
+        workspace_skill_dir=workspace_skill_dir,
         entrypoint=workspace_entrypoint,
         script_id=script_id,
         sha256=actual_sha256,

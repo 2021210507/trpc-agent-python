@@ -39,6 +39,8 @@ class ResourceRule:
     requires_full_file: bool = False
 
     def match(self, change_set: ChangeSet) -> Tuple[RuleMatch, ...]:
+        """检查新增 Python hunk 中打开资源是否在可见范围内关闭。"""
+
         matches = []
         for file_change in change_set.files:
             if file_change.is_binary or not file_change.normalized_path.endswith(".py"):
@@ -85,7 +87,7 @@ class ResourceRule:
 
 
 def default_resource_rules() -> Tuple[ReviewRule, ...]:
-    """Return A5 resource-lifecycle rules in deterministic execution order."""
+    """按稳定执行顺序返回资源生命周期规则。"""
 
     return (
         ResourceRule(

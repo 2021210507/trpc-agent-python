@@ -33,6 +33,8 @@ _SCHEDULED = re.compile(r"\b(?:create_task|ensure_future|gather)\s*\(")
 
 
 def _async_function_names(change_set: ChangeSet) -> Set[str]:
+    """收集变更中可见的异步函数名，供未 await 检测使用。"""
+
     names = set()
     for file_change in change_set.files:
         if file_change.is_binary or not file_change.normalized_path.endswith(".py"):
@@ -49,7 +51,7 @@ def _is_async_scope_line(
     line_text: str,
     active_indent: int | None,
 ) -> Tuple[int | None, bool]:
-    """Advance an indentation-based async scope and report whether it is active."""
+    """推进基于缩进的异步作用域，并返回当前行是否在该作用域内。"""
 
     definition = _ASYNC_DEF.match(line_text)
     if definition is not None:
@@ -64,10 +66,14 @@ def _is_async_scope_line(
 
 
 def _blocking_sleep(code: str, _async_names: Set[str]) -> bool:
+    """判断异步作用域代码是否调用阻塞的 ``time.sleep``。"""
+
     return bool(_TIME_SLEEP.search(code))
 
 
 def _unawaited_coroutine(code: str, async_names: Set[str]) -> bool:
+    """判断异步调用是否既未 await 也未被已知调度 API 接管。"""
+
     if _AWAIT.search(code) or _SCHEDULED.search(code):
         return False
     if _ASYNCIO_SLEEP.search(code):
@@ -89,6 +95,8 @@ class AsyncRule:
     requires_full_file: bool = False
 
     def match(self, change_set: ChangeSet) -> Tuple[RuleMatch, ...]:
+        """扫描新增 Python 行，生成异步阻塞与未等待协程候选项。"""
+
         matches = []
         async_names = _async_function_names(change_set)
         for file_change in change_set.files:
@@ -128,7 +136,7 @@ class AsyncRule:
 
 
 def default_async_rules() -> Tuple[ReviewRule, ...]:
-    """Return A5 async rules in deterministic execution order."""
+    """按稳定执行顺序返回异步错误规则包。"""
 
     return (
         AsyncRule(

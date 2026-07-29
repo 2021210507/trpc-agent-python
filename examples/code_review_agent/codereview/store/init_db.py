@@ -17,7 +17,7 @@ from .review_store import DEFAULT_DB_URL, SqlReviewStore
 
 
 def init_db(db_url: str = DEFAULT_DB_URL) -> None:
-    """Create the five review tables and close the initialization engine."""
+    """创建五张评审业务表，并在完成后关闭初始化引擎。"""
 
     store = SqlReviewStore(db_url)
     try:
@@ -27,7 +27,7 @@ def init_db(db_url: str = DEFAULT_DB_URL) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Initialize a configured review database."""
+    """解析数据库参数并执行幂等初始化命令。"""
 
     parser = argparse.ArgumentParser(
         description="Initialize the automatic code-review database.",

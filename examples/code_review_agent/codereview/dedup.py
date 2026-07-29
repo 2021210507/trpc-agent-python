@@ -62,7 +62,7 @@ class BucketedFindings:
     warnings: tuple[dict[str, str], ...]
 
     def to_dict(self) -> dict[str, list[dict[str, Any]]]:
-        """Return a detached, JSON-serializable canonical representation."""
+        """返回与内部状态隔离、可 JSON 序列化的规范化分桶结果。"""
 
         return {
             "findings": deepcopy(list(self.findings)),
@@ -73,7 +73,7 @@ class BucketedFindings:
 
 
 def bucket_for_confidence(confidence: float) -> FindingBucket:
-    """Map a validated confidence to one non-overlapping bucket."""
+    """按锁定置信度边界将候选项映射到互斥分桶。"""
 
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
         raise ValueError("confidence must be a number between 0 and 1")
@@ -93,6 +93,8 @@ def _string_field(
     *,
     allow_empty: bool = False,
 ) -> str:
+    """读取并校验候选 finding 中指定的字符串字段。"""
+
     value = candidate[name]
     if not isinstance(value, str):
         raise ValueError(f"{name} must be a string")
@@ -102,6 +104,8 @@ def _string_field(
 
 
 def _normalize_also_matched(extra: Mapping[str, Any]) -> set[str]:
+    """规范化去重合并后的附加规则标识集合。"""
+
     value = extra.get("also_matched", ())
     if not isinstance(value, (list, tuple, set, frozenset)):
         raise ValueError("extra.also_matched must be a sequence of rule ids")
@@ -114,6 +118,8 @@ def _normalize_also_matched(extra: Mapping[str, Any]) -> set[str]:
 
 
 def _normalize_candidate(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    """脱敏并校验单个候选 finding，使其符合内部字段契约。"""
+
     missing = sorted(_REQUIRED_FINDING_FIELDS - set(candidate))
     if missing:
         raise ValueError(f"finding is missing required fields: {missing}")
@@ -163,7 +169,7 @@ def _normalize_candidate(candidate: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _evidence_specificity(evidence: str) -> tuple[int, int, int]:
-    """Return a deterministic proxy for how concrete the evidence is."""
+    """返回证据具体程度的稳定排序代理值。"""
 
     normalized = " ".join(evidence.split())
     non_whitespace_length = sum(not character.isspace() for character in evidence)
@@ -171,6 +177,8 @@ def _evidence_specificity(evidence: str) -> tuple[int, int, int]:
 
 
 def _primary_key(candidate: Mapping[str, Any]) -> tuple[Any, ...]:
+    """构造同一去重组内选择主 finding 的稳定优先级键。"""
+
     specificity = _evidence_specificity(candidate["evidence"])
     return (
         -_SEVERITY_RANK[candidate["severity"]],
@@ -193,6 +201,8 @@ def _primary_key(candidate: Mapping[str, Any]) -> tuple[Any, ...]:
 
 
 def _output_key(candidate: Mapping[str, Any]) -> tuple[Any, ...]:
+    """构造最终报告中 finding 的稳定输出排序键。"""
+
     return (
         -_SEVERITY_RANK[candidate["severity"]],
         candidate["file"],
@@ -203,13 +213,15 @@ def _output_key(candidate: Mapping[str, Any]) -> tuple[Any, ...]:
 
 
 def _dedup_key(candidate: Mapping[str, Any]) -> tuple[str, int, str]:
+    """返回规格锁定的文件、行号、类别三元去重键。"""
+
     return candidate["file"], candidate["line"], candidate["category"]
 
 
 def deduplicate_findings(
     candidates: Iterable[Mapping[str, Any]],
 ) -> tuple[dict[str, Any], ...]:
-    """Deduplicate candidates by ``(file, line, category)`` deterministically."""
+    """按文件、行号、类别三元组稳定去重候选 finding。"""
 
     groups: dict[
         tuple[str, int, str],
@@ -247,6 +259,8 @@ def deduplicate_findings(
 
 
 def _normalize_warning(warning: Mapping[str, Any]) -> dict[str, str]:
+    """脱敏并校验运行或治理 warning 的最小字段。"""
+
     if "code" not in warning or "message" not in warning:
         raise ValueError("runtime warning requires code and message")
     safe = redact_data(warning)
@@ -266,7 +280,7 @@ def route_findings(
     *,
     warnings: Iterable[Mapping[str, Any]] = (),
 ) -> BucketedFindings:
-    """Deduplicate findings and route findings and runtime warnings separately."""
+    """去重候选项后按置信度分桶，并独立保留运行告警。"""
 
     buckets: dict[FindingBucket, list[dict[str, Any]]] = {
         FindingBucket.FINDINGS: [],

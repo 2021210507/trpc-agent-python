@@ -45,7 +45,7 @@ _RUN_STATUSES = {"ok", "failed", "timeout", "blocked", "error"}
 
 
 def _ensure_sqlite_parent(db_url: str) -> None:
-    """Create the parent for a file-backed SQLite URL."""
+    """为文件型 SQLite URL 创建其父目录。"""
 
     url = make_url(db_url)
     if not url.drivername.startswith("sqlite"):
@@ -60,6 +60,8 @@ def _enable_sqlite_foreign_keys(
     dbapi_connection: Any,
     _connection_record: Any,
 ) -> None:
+    """在每个 SQLite 连接建立时启用外键约束。"""
+
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
@@ -70,7 +72,7 @@ def _versioned_json(
     *,
     schema_version: str = DEFAULT_SCHEMA_VERSION,
 ) -> dict[str, Any]:
-    """Redact and wrap a JSON field with its persistence schema version."""
+    """脱敏 JSON 字段并附加持久化 schema 版本。"""
 
     redacted = redact_data(value)
     if isinstance(redacted, Mapping):
@@ -84,7 +86,7 @@ def _versioned_json(
 
 
 def _model_dict(model: Any) -> dict[str, Any]:
-    """Convert one ORM row to a detached JSON-safe dictionary."""
+    """将一个 ORM 行转换为脱离会话的 JSON 安全字典。"""
 
     result: dict[str, Any] = {}
     for column in model.__table__.columns:
@@ -100,15 +102,15 @@ class ReviewStore(ABC):
 
     @abstractmethod
     def initialize(self) -> None:
-        """Create the schema if it does not already exist."""
+        """在表不存在时初始化业务 schema。"""
 
     @abstractmethod
     def create_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
-        """Persist a running review task."""
+        """持久化一条运行中的评审任务。"""
 
     @abstractmethod
     def update_task(self, task_id: str, **updates: Any) -> dict[str, Any]:
-        """Update mutable task state."""
+        """更新允许变更的评审任务状态字段。"""
 
     @abstractmethod
     def add_sandbox_run(
@@ -116,7 +118,7 @@ class ReviewStore(ABC):
         task_id: str,
         run: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Persist one sandbox attempt."""
+        """持久化一次受治理的沙箱执行尝试。"""
 
     @abstractmethod
     def add_filter_event(
@@ -124,7 +126,7 @@ class ReviewStore(ABC):
         task_id: str,
         filter_event: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Persist one governance decision."""
+        """持久化一次沙箱执行前的治理决策。"""
 
     @abstractmethod
     def add_finding(
@@ -132,7 +134,7 @@ class ReviewStore(ABC):
         task_id: str,
         finding: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Persist one structured finding."""
+        """持久化一条已结构化和脱敏的 finding。"""
 
     @abstractmethod
     def save_report(
@@ -140,11 +142,11 @@ class ReviewStore(ABC):
         task_id: str,
         report: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Create or replace the task's canonical report."""
+        """创建或替换任务对应的 canonical 报告。"""
 
     @abstractmethod
     def get_task_bundle(self, task_id: str) -> dict[str, Any] | None:
-        """Return task, runs, events, findings, and report together."""
+        """按任务 ID 聚合返回任务、运行、事件、finding 和报告。"""
 
     @abstractmethod
     def list_task_summaries(self) -> list[dict[str, Any]]:
@@ -152,17 +154,19 @@ class ReviewStore(ABC):
 
     @abstractmethod
     def delete_task(self, task_id: str) -> bool:
-        """Delete a task and all child rows."""
+        """删除任务及其级联关联的子记录。"""
 
     @abstractmethod
     def close(self) -> None:
-        """Release backend resources."""
+        """释放存储后端持有的连接和资源。"""
 
 
 class SqlReviewStore(ReviewStore):
     """Synchronous SQLAlchemy implementation with a URL-only backend seam."""
 
     def __init__(self, db_url: str = DEFAULT_DB_URL) -> None:
+        """保存数据库 URL，并延迟创建 SQLAlchemy 引擎。"""
+
         if not db_url.strip():
             raise ValueError("db_url must not be empty")
         self._db_url = db_url
@@ -171,13 +175,15 @@ class SqlReviewStore(ReviewStore):
 
     @property
     def engine(self) -> Engine:
-        """Return the initialized engine for diagnostics and migrations."""
+        """返回已初始化的引擎，供诊断或迁移入口使用。"""
 
         if self._engine is None:
             raise RuntimeError("review store is not initialized")
         return self._engine
 
     def initialize(self) -> None:
+        """幂等创建五张评审表并准备会话工厂。"""
+
         if self._engine is not None:
             Base.metadata.create_all(self._engine)
             return
@@ -194,11 +200,15 @@ class SqlReviewStore(ReviewStore):
         )
 
     def _session(self) -> Session:
+        """返回一个新的数据库会话，未初始化时明确失败。"""
+
         if self._session_factory is None:
             raise RuntimeError("review store is not initialized")
         return self._session_factory()
 
     def create_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
+        """校验、脱敏并写入一条初始评审任务。"""
+
         status = str(task.get("status", "running"))
         if status not in _TASK_STATUSES:
             raise ValueError(f"invalid review task status: {status}")
@@ -235,6 +245,8 @@ class SqlReviewStore(ReviewStore):
             return _model_dict(row)
 
     def update_task(self, task_id: str, **updates: Any) -> dict[str, Any]:
+        """更新白名单内的任务字段，并对可持久化值执行脱敏。"""
+
         allowed = {
             "status",
             "input_ref",
@@ -273,6 +285,8 @@ class SqlReviewStore(ReviewStore):
         task_id: str,
         run: Mapping[str, Any],
     ) -> dict[str, Any]:
+        """脱敏并保存一次沙箱运行摘要。"""
+
         status = str(run.get("status", "")).strip()
         if status not in _RUN_STATUSES:
             raise ValueError(f"invalid sandbox run status: {status}")
@@ -298,6 +312,8 @@ class SqlReviewStore(ReviewStore):
         task_id: str,
         filter_event: Mapping[str, Any],
     ) -> dict[str, Any]:
+        """脱敏并保存执行前 Filter 决策事件。"""
+
         schema_version = str(
             filter_event.get("schema_version", DEFAULT_SCHEMA_VERSION)
         )
@@ -322,6 +338,8 @@ class SqlReviewStore(ReviewStore):
         task_id: str,
         finding: Mapping[str, Any],
     ) -> dict[str, Any]:
+        """脱敏并保存一条已去重或已分桶的结构化 finding。"""
+
         schema_version = str(
             finding.get("schema_version", DEFAULT_SCHEMA_VERSION)
         )
@@ -354,6 +372,8 @@ class SqlReviewStore(ReviewStore):
         task_id: str,
         report: Mapping[str, Any],
     ) -> dict[str, Any]:
+        """按任务 ID upsert 已脱敏的 canonical 报告及其摘要字段。"""
+
         schema_version = str(
             report.get("schema_version", DEFAULT_SCHEMA_VERSION)
         )
@@ -401,6 +421,8 @@ class SqlReviewStore(ReviewStore):
             return _model_dict(row)
 
     def get_task_bundle(self, task_id: str) -> dict[str, Any] | None:
+        """查询任务的五个持久化域，并返回可回放 bundle。"""
+
         with self._session() as session:
             task = session.get(ReviewTaskModel, task_id)
             if task is None:
@@ -457,6 +479,8 @@ class SqlReviewStore(ReviewStore):
             ]
 
     def delete_task(self, task_id: str) -> bool:
+        """删除指定任务；不存在时返回 false 而不抛异常。"""
+
         with self._session() as session:
             row = session.get(ReviewTaskModel, task_id)
             if row is None:
@@ -466,6 +490,8 @@ class SqlReviewStore(ReviewStore):
             return True
 
     def close(self) -> None:
+        """释放当前引擎并清空会话工厂引用。"""
+
         if self._engine is None:
             return
         self._engine.dispose()

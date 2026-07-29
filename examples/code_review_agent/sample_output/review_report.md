@@ -1,6 +1,6 @@
 # 自动代码评审报告
 
-任务 ID：sample-02-security
+任务 ID：review-dc105585ea724c808689045e3e2e3213
 状态：completed_with_warnings
 
 ## 输入范围
@@ -11,11 +11,11 @@
 
 ## 1. Findings 摘要
 - [high] `src/query.py`（新侧行 4）— SQL is built with an interpolated f-string
-  - 证据：cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")
-  - 建议：Use parameterized queries and bind user-controlled values separately.
+  - 证据：    cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")
+  - 建议：请在隔离分支完成修复并补充对应回归测试。
 - [high] `src/query.py`（新侧行 5）— subprocess executes with shell=True
-  - 证据：subprocess.run("echo " + user_id, shell=True)
-  - 建议：Pass an argument list with shell disabled and validate all command inputs.
+  - 证据：    subprocess.run("echo " + user_id, shell=True)
+  - 建议：请在隔离分支完成修复并补充对应回归测试。
 
 ## 2. 严重级别统计
 - high：2
@@ -35,12 +35,13 @@
 - 执行次数：1；运行摘要数：1
 
 ## 7. 监控指标
-- 总耗时：3 ms
-- 沙箱耗时：1 ms
-- 工具调用：0；沙箱运行：1
+- 总耗时：630 ms
+- 沙箱耗时：267 ms
+- 工具调用：2；沙箱运行：1
 - warnings：1；suppressed：0
 
 ## 8. 结论与可执行修复建议
-- 摘要：Two high-risk deterministic findings require remediation before merge.
-1. Use parameterized queries and bind user-controlled values separately.
+- 摘要：已生成脱敏的人工复核摘要。
+1. 请在隔离分支完成修复并补充对应回归测试。
 2. Pass an argument list with shell disabled and validate all command inputs.
+3. Use parameterized queries and bind user-controlled values separately.

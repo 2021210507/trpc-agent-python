@@ -15,6 +15,8 @@ import json
 import logging
 import shutil
 import subprocess
+import sys
+import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -25,22 +27,29 @@ from codereview.governance import (
     GovernanceRequest,
     SandboxGovernanceFilter,
 )
-from codereview.inputs import FixturePayload
+from codereview.inputs import FixturePayload, InputValidationError, load_input
 from codereview.model_environment import load_model_environment
+from codereview.model_runtime import build_real_model
 from codereview.pipeline import PipelineFatalError, ReviewPipeline
+from codereview.redaction import contains_plaintext_secret
+from codereview.trace import TraceSink, emit_trace
 from codereview.sandbox import (
     SandboxConfigurationError,
+    SandboxRuntimeSelection,
     SdkSkillSandbox,
     build_sandbox_environment,
     create_sandbox_runtime,
 )
 from codereview.store import DEFAULT_DB_URL, SqlReviewStore, init_db
+from trpc_agent_sdk.models import LLMModel
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
 _SKILL_ROOT = _PROJECT_ROOT / "skills" / "code-review"
 _MANIFEST_PATH = _SKILL_ROOT / "scripts" / "manifest.json"
 _SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+_LOGGER = logging.getLogger("code_review_agent")
+_USER_QUERY_MAX_CHARACTERS = 1000
 
 
 class CliError(ValueError):
@@ -84,8 +93,53 @@ def _json_output(payload: Mapping[str, Any]) -> None:
     print(json.dumps(dict(payload), ensure_ascii=False, sort_keys=True))
 
 
-def _fixture_payload(name: str) -> FixturePayload:
-    """从受控 fixture 目录解析 diff 或 JSON 载荷，为 D3 完整 fixture 集预留单一入口。"""
+def configure_safe_logging(level_name: str | None) -> None:
+    """配置仅输出安全项目事件的 stderr 日志，并屏蔽可能含路径或工作区标识的 SDK 原始诊断。"""
+
+    level = getattr(logging, (level_name or "INFO").upper(), logging.INFO)
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+    _LOGGER.handlers.clear()
+    _LOGGER.addHandler(handler)
+    _LOGGER.setLevel(level)
+    _LOGGER.propagate = False
+    sdk_logger = logging.getLogger("trpc_agent_sdk")
+    sdk_logger.handlers.clear()
+    sdk_logger.addHandler(logging.NullHandler())
+    sdk_logger.setLevel(logging.CRITICAL + 1)
+    sdk_logger.propagate = False
+
+
+def _terminal_report_path(path: Path) -> str:
+    """把报告路径限制为当前目录相对形式，避免 INFO 日志暴露宿主绝对路径。"""
+
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except (OSError, ValueError):
+        return path.name
+
+
+def _trace_sink(args: argparse.Namespace) -> TraceSink | None:
+    """在显式 --trace 时构造 stderr JSONL sink，保持 stdout 的最终结果契约。"""
+
+    if not getattr(args, "trace", False):
+        return None
+
+    def write(event: str, details: Mapping[str, object]) -> None:
+        """将已脱敏事件立即写到 stderr，供终端实时展示与脚本过滤。"""
+
+        payload = {"event": event, **dict(details)}
+        print(
+            "[code-review-trace] " + json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            file=sys.stderr,
+            flush=True,
+        )
+
+    return write
+
+
+def load_fixture_payload(name: str) -> FixturePayload:
+    """从受控 fixture 目录解析 diff 或 JSON 载荷，供 CLI 与评测复用同一可信 fixture 边界。"""
 
     if not name or Path(name).name != name:
         raise CliError("fixture_name_invalid")
@@ -138,8 +192,10 @@ def _container_available() -> bool:
     return result.returncode == 0
 
 
-def _build_pipeline(args: argparse.Namespace) -> tuple[ReviewPipeline, SqlReviewStore]:
-    """按明确 sandbox 选择组装唯一 ReviewPipeline，不让 dry-run 改变隔离策略。"""
+def build_review_pipeline(
+    args: argparse.Namespace,
+) -> tuple[ReviewPipeline, SqlReviewStore, SdkSkillSandbox, SandboxRuntimeSelection]:
+    """按明确 sandbox 选择组装唯一 ReviewPipeline，供 CLI 与受控评测复用且不让 dry-run 改变隔离策略。"""
 
     config = ReviewConfig.from_env()
     output_dir = Path(args.output_dir)
@@ -172,7 +228,49 @@ def _build_pipeline(args: argparse.Namespace) -> tuple[ReviewPipeline, SqlReview
         model_mode="fake" if args.dry_run else args.model_mode,
         model_environment=model_environment,
     )
-    return pipeline, store
+    return pipeline, store, sandbox, selection
+
+
+def _agent_model(args: argparse.Namespace) -> LLMModel | None:
+    """仅在显式 real 且非 dry-run 时构造真实 Agent 模型，其余模式使用离线工具调用模型。"""
+
+    if args.dry_run or args.model_mode != "real":
+        return None
+    environment = load_model_environment(_PROJECT_ROOT / ".env")
+    api_key = environment.get("TRPC_AGENT_API_KEY", "")
+    base_url = environment.get("TRPC_AGENT_BASE_URL", "")
+    model_name = environment.get("TRPC_AGENT_MODEL_NAME", "")
+    if not api_key or not base_url or not model_name:
+        raise CliError("real_model_configuration_missing")
+    return build_real_model(environment)
+
+
+def _create_sdk_review_agent(
+    *,
+    pipeline: ReviewPipeline,
+    selection: SandboxRuntimeSelection,
+    sandbox: SdkSkillSandbox,
+    model: LLMModel | None,
+) -> Any:
+    """仅在 user-query 入口加载 SDK Agent，并屏蔽已知第三方弃用警告以保护终端路径边界。"""
+
+    from langchain_core._api.deprecation import LangChainPendingDeprecationWarning
+
+    warnings.filterwarnings(
+        "ignore",
+        message=r"The default value of `allowed_objects` will change.*",
+        category=LangChainPendingDeprecationWarning,
+        module=r"langgraph\.checkpoint\..*",
+    )
+    from agent.agent import create_review_agent
+
+    return create_review_agent(
+        pipeline=pipeline,
+        skill_root=_PROJECT_ROOT / "skills",
+        model=model,
+        workspace_runtime=selection.runtime,
+        workspace_binder=sandbox,
+    )
 
 
 def _review_input(args: argparse.Namespace) -> dict[str, Any]:
@@ -189,8 +287,41 @@ def _review_input(args: argparse.Namespace) -> dict[str, Any]:
             "input_root": input_root,
         }
     if args.fixture is not None:
-        return {"fixture": _fixture_payload(args.fixture)}
+        return {"fixture": load_fixture_payload(args.fixture)}
     raise CliError("review_input_required")
+
+
+def _validate_user_query(query: str) -> None:
+    """验证自然语言意图不携带凭据、原始补丁或不可控二进制内容。"""
+
+    if not isinstance(query, str) or not query.strip() or len(query) > _USER_QUERY_MAX_CHARACTERS:
+        raise CliError("user_query_invalid")
+    if "\x00" in query or "diff --git " in query or "\n@@ " in query:
+        raise CliError("user_query_payload_forbidden")
+    if contains_plaintext_secret(query):
+        raise CliError("user_query_secret_forbidden")
+
+
+def _preflight_user_query_input(args: argparse.Namespace) -> dict[str, Any]:
+    """在创建 Agent 前验证四类结构化输入，确保无效载荷零模型和沙箱副作用。"""
+
+    input_options = _review_input(args)
+    try:
+        parsed = load_input(config=ReviewConfig.from_env(), **input_options)
+    except (InputValidationError, ValueError) as exc:
+        raise CliError("user_query_input_invalid") from exc
+    if input_options.get("diff_file") is not None and parsed.change_set.file_count == 0:
+        raise CliError("user_query_diff_invalid")
+    return input_options
+
+
+def _source_kind(input_options: Mapping[str, Any]) -> str:
+    """从已验证的输入选项提取安全来源枚举，禁止读取路径或原始载荷。"""
+
+    for name in ("fixture", "diff_file", "repo_path", "files"):
+        if input_options.get(name) is not None:
+            return name.removesuffix("_file").removesuffix("_path")
+    return "unknown"
 
 
 def _severity_exit_code(report: Mapping[str, Any], threshold: str | None) -> int:
@@ -205,20 +336,78 @@ def _severity_exit_code(report: Mapping[str, Any], threshold: str | None) -> int
     return 0
 
 
-def _review(args: argparse.Namespace) -> int:
-    """运行唯一评审链路并输出不含原始输入的任务标识、状态和相对报告文件名。"""
+def _report_output_paths(output_dir: Path) -> dict[str, str]:
+    """返回本次终端可见的完整报告路径，不把路径持久化到审查数据。"""
 
-    pipeline, store = _build_pipeline(args)
+    return {
+        "json": str((output_dir / "review_report.json").resolve()),
+        "markdown": str((output_dir / "review_report.md").resolve()),
+    }
+
+
+def _run_review(
+    args: argparse.Namespace,
+    *,
+    use_agent: bool,
+    user_instruction: str | None = None,
+    input_options: Mapping[str, Any] | None = None,
+) -> int:
+    """按 direct 或 Agent 入口执行同一 pipeline，并只输出安全的运行摘要。"""
+
+    pipeline, store, sandbox, selection = build_review_pipeline(args)
+    trace = _trace_sink(args)
     try:
-        result = pipeline.run(**_review_input(args))
+        resolved_input = dict(_review_input(args) if input_options is None else input_options)
+        agent = None
+        entrypoint = "agent" if use_agent else "pipeline"
+        _LOGGER.info(
+            "Review started: entrypoint=%s model_mode=%s runtime=%s",
+            entrypoint,
+            "fake" if args.dry_run else args.model_mode,
+            args.sandbox,
+        )
+        container_id = sandbox.container_id
+        if container_id:
+            _LOGGER.info("Container started: container_id=%s", container_id)
+        emit_trace(
+            trace,
+            "review.started",
+            entrypoint=entrypoint,
+            runtime_type=args.sandbox,
+            model_mode="fake" if args.dry_run else args.model_mode,
+        )
+        if use_agent:
+            agent = _create_sdk_review_agent(
+                pipeline=pipeline,
+                model=_agent_model(args),
+                selection=selection,
+                sandbox=sandbox,
+            )
+            result = agent.review(
+                user_instruction=user_instruction,
+                trace=trace,
+                **resolved_input,
+            )
+        else:
+            result = pipeline.run(trace=trace, **resolved_input)
+        emit_trace(trace, "review.completed", status=result.status, entrypoint=entrypoint)
+        report_files = _report_output_paths(Path(args.output_dir))
+        _LOGGER.info(
+            "Report persisted: status=%s findings=%s warnings=%s needs_human_review=%s",
+            result.status,
+            len(result.report.get("findings", ())),
+            len(result.report.get("warnings", ())),
+            len(result.report.get("needs_human_review", ())),
+        )
+        _LOGGER.info("JSON report saved to: %s", _terminal_report_path(Path(report_files["json"])))
+        _LOGGER.info("Markdown report saved to: %s", _terminal_report_path(Path(report_files["markdown"])))
         _json_output(
             {
                 "task_id": result.task_id,
                 "status": result.status,
-                "report_files": {
-                    "json": "review_report.json",
-                    "markdown": "review_report.md",
-                },
+                "entrypoint": entrypoint,
+                "skill_tools": list(agent.last_tool_trace) if agent is not None else [],
+                "report_files": report_files,
                 "dry_run": bool(args.dry_run),
                 "sandbox": args.sandbox,
             }
@@ -228,6 +417,28 @@ def _review(args: argparse.Namespace) -> int:
         raise CliError("review_pipeline_failed") from exc
     finally:
         store.close()
+
+
+def _review(args: argparse.Namespace) -> int:
+    """执行公开 direct review 入口，不创建 Agent 或 Skill 工具调用。"""
+
+    return _run_review(args, use_agent=False)
+
+
+def _user_query(args: argparse.Namespace) -> int:
+    """验证自然语言意图和结构化输入后，经 SDK Agent 调用受控 code-review Skill。"""
+
+    trace = _trace_sink(args)
+    emit_trace(trace, "user_query.request_received", input_type="query")
+    _validate_user_query(args.query)
+    input_options = _preflight_user_query_input(args)
+    emit_trace(trace, "user_query.input_validated", input_type=_source_kind(input_options))
+    return _run_review(
+        args,
+        use_agent=True,
+        user_instruction=args.query,
+        input_options=input_options,
+    )
 
 
 def _show(args: argparse.Namespace) -> int:
@@ -272,26 +483,49 @@ def _add_db_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--db-url", default=DEFAULT_DB_URL)
 
 
+def _add_review_execution_arguments(parser: argparse.ArgumentParser) -> None:
+    """为 review 与 user-query 添加一致的沙箱、模型、输出和 CI 失败阈值参数。"""
+
+    parser.add_argument("--output-dir", default="out")
+    parser.add_argument("--sandbox", choices=("container", "cube", "local"), default="container")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--model-mode", choices=("fake", "real", "off"), default="fake")
+    parser.add_argument("--log-level", choices=("DEBUG", "INFO", "WARNING"), default="INFO")
+    parser.add_argument("--trace", action="store_true", help="stream sanitized review progress to stderr")
+    parser.add_argument("--fail-on-severity", choices=tuple(_SEVERITY_RANK))
+    _add_db_argument(parser)
+
+
+def _add_review_input_arguments(parser: argparse.ArgumentParser) -> None:
+    """为 direct 与 Agent 入口添加完全一致且互斥的四类结构化输入参数。"""
+
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--diff-file")
+    inputs.add_argument("--repo-path")
+    inputs.add_argument("--files", nargs="+")
+    inputs.add_argument("--fixture")
+    parser.add_argument("--input-root", default=str(Path.cwd()))
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    """构建仅暴露本期允许参数的四子命令解析器，未知高风险参数由 argparse 拒绝。"""
+    """构建仅暴露本期允许参数的子命令解析器，未知高风险参数由 argparse 拒绝。"""
 
     parser = argparse.ArgumentParser(description="Automatic code-review Agent")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     review = subcommands.add_parser("review", help="run one deterministic review")
-    inputs = review.add_mutually_exclusive_group(required=True)
-    inputs.add_argument("--diff-file")
-    inputs.add_argument("--repo-path")
-    inputs.add_argument("--files", nargs="+")
-    inputs.add_argument("--fixture")
-    review.add_argument("--input-root", default=str(Path.cwd()))
-    review.add_argument("--output-dir", default="out")
-    review.add_argument("--sandbox", choices=("container", "cube", "local"), default="container")
-    review.add_argument("--dry-run", action="store_true")
-    review.add_argument("--model-mode", choices=("fake", "real", "off"), default="fake")
-    review.add_argument("--fail-on-severity", choices=tuple(_SEVERITY_RANK))
-    _add_db_argument(review)
+    _add_review_input_arguments(review)
+    _add_review_execution_arguments(review)
     review.set_defaults(handler=_review)
+
+    user_query = subcommands.add_parser(
+        "user-query",
+        help="run an Agent review from natural-language intent and one explicit input",
+    )
+    user_query.add_argument("query")
+    _add_review_input_arguments(user_query)
+    _add_review_execution_arguments(user_query)
+    user_query.set_defaults(handler=_user_query)
 
     show = subcommands.add_parser("show", help="show one persisted review bundle")
     show.add_argument("task_id")
@@ -311,9 +545,9 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """分发 CLI 子命令并将可预期错误收敛为 2，其他异常不暴露原始运行环境信息。"""
 
-    logging.disable(logging.CRITICAL)
     parser = _build_parser()
     args = parser.parse_args(argv)
+    configure_safe_logging(getattr(args, "log_level", "WARNING"))
     try:
         return int(args.handler(args))
     except (CliError, ValueError):

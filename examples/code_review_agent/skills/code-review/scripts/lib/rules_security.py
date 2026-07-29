@@ -56,6 +56,8 @@ class SecurityRule:
     requires_full_file: bool = False
 
     def match(self, change_set: ChangeSet) -> Tuple[RuleMatch, ...]:
+        """扫描新增 Python 行，返回命中的确定性安全风险候选项。"""
+
         matches = []
         for file_change in change_set.files:
             if file_change.is_binary or not file_change.normalized_path.endswith(".py"):
@@ -92,6 +94,8 @@ class SecurityRule:
 
 
 def _sql_fstring(_code: str, f_strings: Tuple[str, ...]) -> bool:
+    """判断 f-string 中是否含有插值构造的 SQL 语句。"""
+
     if any(_SQL_KEYWORDS.search(value) and _INTERPOLATION.search(value) for value in f_strings):
         return True
     return bool(
@@ -104,6 +108,8 @@ def _sql_fstring(_code: str, f_strings: Tuple[str, ...]) -> bool:
 
 
 def _shell_true(code: str, _f_strings: Tuple[str, ...]) -> bool:
+    """判断 subprocess 调用是否显式启用 ``shell=True``。"""
+
     return bool(_SHELL_TRUE.search(code))
 
 
@@ -114,10 +120,14 @@ def _dynamic_eval(code: str, _f_strings: Tuple[str, ...]) -> bool:
 
 
 def _dynamic_exec(code: str, _f_strings: Tuple[str, ...]) -> bool:
+    """判断代码行是否直接调用内置或限定名 exec。"""
+
     return bool(_DYNAMIC_EXEC.search(code))
 
 
 def _os_system(code: str, _f_strings: Tuple[str, ...]) -> bool:
+    """判断代码行是否调用隐式 shell 的 ``os.system``。"""
+
     return bool(_OS_SYSTEM.search(code))
 
 

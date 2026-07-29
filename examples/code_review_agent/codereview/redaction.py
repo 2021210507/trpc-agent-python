@@ -24,13 +24,13 @@ from lib import secret_rules as _SECRET_RULES  # noqa: E402
 
 
 def redact_text(text: str) -> str:
-    """Redact a single output string using the staged Skill's pattern table."""
+    """使用已加载 Skill 的规则表脱敏单个输出字符串。"""
 
     return _SECRET_RULES.redact_text(text)
 
 
 def contains_plaintext_secret(value: Any) -> bool:
-    """Recursively inspect an output value for unredacted secret syntax."""
+    """递归检查输出值是否仍含未脱敏的敏感信息语法。"""
 
     if isinstance(value, str):
         return _SECRET_RULES.contains_secret(value)
@@ -45,7 +45,7 @@ def contains_plaintext_secret(value: Any) -> bool:
 
 
 def redact_data(value: Any) -> Any:
-    """Recursively redact all strings before an object leaves the host."""
+    """在对象离开宿主前递归脱敏其中的所有字符串。"""
 
     if isinstance(value, str):
         return redact_text(value)
@@ -63,6 +63,6 @@ def redact_data(value: Any) -> Any:
 
 
 def redact_transport_fields(**fields: Any) -> dict[str, Any]:
-    """Apply one redaction path to report, Filter, error and sandbox fields."""
+    """为报告、Filter、异常和沙箱字段应用统一脱敏路径。"""
 
     return {name: redact_data(value) for name, value in fields.items()}

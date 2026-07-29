@@ -44,6 +44,8 @@ class ReviewConfig:
     network_policy: str = "deny"
 
     def __post_init__(self) -> None:
+        """校验评审输入、沙箱和输出预算均满足锁定安全约束。"""
+
         positive_integer_fields = (
             "max_input_file_bytes",
             "max_input_files",
@@ -80,7 +82,7 @@ class ReviewConfig:
         *,
         prefix: str = ENV_PREFIX,
     ) -> "ReviewConfig":
-        """Build a config from a controlled environment mapping.
+        """从受控环境变量映射构造配置，并拒绝格式错误的限制值。
 
         Unknown variables are ignored. Integer fields are parsed strictly so
         malformed limits fail before staging or sandbox execution.
@@ -107,7 +109,7 @@ class ReviewConfig:
 
     @property
     def config_digest(self) -> str:
-        """Return the SHA-256 of the canonical configuration payload."""
+        """返回规范化配置载荷的 SHA-256 摘要。"""
 
         canonical = json.dumps(
             asdict(self),
@@ -118,7 +120,7 @@ class ReviewConfig:
         return hashlib.sha256(canonical).hexdigest()
 
     def to_dict(self) -> dict[str, object]:
-        """Return a persistence-safe configuration snapshot."""
+        """返回可安全持久化的配置快照及其摘要。"""
 
         snapshot: dict[str, object] = asdict(self)
         snapshot["config_digest"] = self.config_digest

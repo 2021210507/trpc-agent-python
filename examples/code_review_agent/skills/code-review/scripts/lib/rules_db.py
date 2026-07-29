@@ -40,6 +40,8 @@ class DbLifecycleRule:
     requires_full_file: bool = False
 
     def match(self, change_set: ChangeSet) -> Tuple[RuleMatch, ...]:
+        """检查新增 Python hunk 中连接和显式事务是否缺少收尾。"""
+
         matches = []
         for file_change in change_set.files:
             if file_change.is_binary or not file_change.normalized_path.endswith(".py"):
@@ -86,7 +88,7 @@ class DbLifecycleRule:
 
 
 def default_db_rules() -> Tuple[ReviewRule, ...]:
-    """Return A6 connection and explicit-transaction lifecycle rules."""
+    """返回数据库连接与显式事务生命周期规则。"""
 
     return (
         DbLifecycleRule(

@@ -133,5 +133,6 @@ def test_checked_in_sample_is_schema_valid_rendered_from_json_and_secret_free() 
     assert markdown_text == MarkdownReportRenderer().render(canonical)
     assert contains_plaintext_secret(canonical) is False
     assert contains_plaintext_secret(markdown_text) is False
+    assert canonical["metrics"]["tool_call_count"] == 2
     assert "\\\\" not in json_text
     assert "\\\\" not in markdown_text

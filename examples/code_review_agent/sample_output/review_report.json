@@ -6,7 +6,9 @@
     "events": [
       {
         "action": "allow",
-        "reasons": ["manifest_verified"],
+        "reasons": [
+          "manifest_verified"
+        ],
         "rule": "sandbox_governance",
         "stage": "pre_execution",
         "target": "run_checks"
@@ -17,9 +19,10 @@
   "final_conclusion": {
     "recommendations": [
       "Pass an argument list with shell disabled and validate all command inputs.",
-      "Use parameterized queries and bind user-controlled values separately."
+      "Use parameterized queries and bind user-controlled values separately.",
+      "请在隔离分支完成修复并补充对应回归测试。"
     ],
-    "summary": "Two high-risk deterministic findings require remediation before merge."
+    "summary": "已生成脱敏的人工复核摘要。"
   },
   "findings": [
     {
@@ -27,12 +30,14 @@
       "category": "security",
       "confidence": 0.82,
       "dedup_key": "src/query.py:4:security",
-      "evidence": "cursor.execute(f\"SELECT * FROM users WHERE id = {user_id}\")",
-      "extra": {"also_matched": []},
+      "evidence": "    cursor.execute(f\"SELECT * FROM users WHERE id = {user_id}\")",
+      "extra": {
+        "also_matched": []
+      },
       "file": "src/query.py",
       "line": 4,
       "line_side": "new",
-      "recommendation": "Use parameterized queries and bind user-controlled values separately.",
+      "recommendation": "请在隔离分支完成修复并补充对应回归测试。",
       "rule_id": "security.sql-fstring",
       "severity": "high",
       "source": "heuristic",
@@ -43,12 +48,14 @@
       "category": "security",
       "confidence": 0.85,
       "dedup_key": "src/query.py:5:security",
-      "evidence": "subprocess.run(\"echo \" + user_id, shell=True)",
-      "extra": {"also_matched": []},
+      "evidence": "    subprocess.run(\"echo \" + user_id, shell=True)",
+      "extra": {
+        "also_matched": []
+      },
       "file": "src/query.py",
       "line": 5,
       "line_side": "new",
-      "recommendation": "Pass an argument list with shell disabled and validate all command inputs.",
+      "recommendation": "请在隔离分支完成修复并补充对应回归测试。",
       "rule_id": "security.subprocess-shell-true",
       "severity": "high",
       "source": "heuristic",
@@ -61,30 +68,42 @@
     "deletions": 0,
     "file_count": 2,
     "files": [
-      {"path": "src/query.py", "review_scope": "full_file", "status": "added"},
-      {"path": "tests/test_query.py", "review_scope": "full_file", "status": "added"}
+      {
+        "path": "src/query.py",
+        "review_scope": "full_file",
+        "status": "added"
+      },
+      {
+        "path": "tests/test_query.py",
+        "review_scope": "full_file",
+        "status": "added"
+      }
     ],
     "hunk_count": 2,
     "parse_warnings": [],
     "source_kind": "fixture"
   },
   "metrics": {
-    "category_distribution": {"security": 2},
+    "category_distribution": {
+      "security": 2
+    },
     "error_type_distribution": {},
     "filter_block_count": 0,
     "filter_review_count": 0,
     "finding_count": 2,
-    "llm_duration_ms": 1,
+    "llm_duration_ms": 4,
     "needs_human_review_count": 0,
-    "platform": "sample",
-    "python_version": "3.10",
+    "platform": "Windows",
+    "python_version": "3.12",
     "runtime_type": "local",
-    "sandbox_duration_ms": 1,
+    "sandbox_duration_ms": 267,
     "sandbox_run_count": 1,
-    "severity_distribution": {"high": 2},
+    "severity_distribution": {
+      "high": 2
+    },
     "suppressed_count": 0,
-    "tool_call_count": 0,
-    "total_duration_ms": 3,
+    "tool_call_count": 2,
+    "total_duration_ms": 630,
     "warning_count": 1
   },
   "needs_human_review": [],
@@ -93,7 +112,7 @@
     "run_count": 1,
     "runs": [
       {
-        "duration_ms": 1,
+        "duration_ms": 267,
         "error_type": null,
         "exit_code": 0,
         "filter_action": "allow",
@@ -108,8 +127,11 @@
   },
   "schema_version": "1.0.0",
   "status": "completed_with_warnings",
-  "suppressed": {"count": 0, "reasons": {}},
-  "task_id": "sample-02-security",
+  "suppressed": {
+    "count": 0,
+    "reasons": {}
+  },
+  "task_id": "review-dc105585ea724c808689045e3e2e3213",
   "warnings": [
     {
       "code": "local_isolation_unverifiable",

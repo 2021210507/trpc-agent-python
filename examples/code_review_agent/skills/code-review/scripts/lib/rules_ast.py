@@ -139,6 +139,8 @@ class _SecurityVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_JoinedStr(self, node: ast.JoinedStr) -> None:
+        """记录包含 SQL 关键字和插值表达式的 f-string 候选项。"""
+
         constants = [
             value.value
             for value in node.values
@@ -411,6 +413,8 @@ class _SecurityVisitor(ast.NodeVisitor):
         )
 
     def _record(self, node: ast.AST, rule_id: str, severity: str, title: str) -> None:
+        """将 AST 命中转换为带源码范围的内部安全候选项。"""
+
         start_line = getattr(node, "lineno", 0)
         end_line = getattr(node, "end_lineno", start_line) or start_line
         self.candidates.append(
@@ -425,7 +429,7 @@ class _SecurityVisitor(ast.NodeVisitor):
 
 
 def _ast_candidates(full_text: str) -> Tuple[_ASTCandidate, ...]:
-    """Parse one complete file defensively and return stable candidates."""
+    """防御性解析一个完整文件，并返回稳定的安全候选集合。"""
 
     try:
         tree = ast.parse(full_text)
@@ -438,7 +442,7 @@ def _ast_candidates(full_text: str) -> Tuple[_ASTCandidate, ...]:
 
 
 def _review_line(candidate: _ASTCandidate, review_scope: str, changed_lines: Tuple[int, ...]) -> int | None:
-    """Return an in-scope primary location, anchored to a changed line when needed."""
+    """返回审查范围内的主定位，必要时锚定到真实变更行。"""
 
     if review_scope == "full_file":
         return candidate.start_line
@@ -451,7 +455,7 @@ def _review_line(candidate: _ASTCandidate, review_scope: str, changed_lines: Tup
 
 
 def _source_line(full_text: str, line_number: int) -> str:
-    """Return one source line without leaking an out-of-range exception."""
+    """安全返回一行源码，且不泄漏越界异常细节。"""
 
     lines = full_text.splitlines()
     return lines[line_number - 1] if 1 <= line_number <= len(lines) else ""
@@ -486,6 +490,8 @@ class ASTSecurityRule:
     requires_full_file: bool = True
 
     def match(self, change_set: ChangeSet) -> Tuple[RuleMatch, ...]:
+        """对可完整解析的 Python 文件执行 AST 安全规则并限制报告范围。"""
+
         matches: List[RuleMatch] = []
         for file_change in change_set.files:
             if file_change.is_binary or not file_change.normalized_path.endswith(".py"):
@@ -520,6 +526,6 @@ class ASTSecurityRule:
 
 
 def default_ast_rules() -> Tuple[ReviewRule, ...]:
-    """Return the deterministic A7 full-file rule pack."""
+    """返回确定性的完整文件 AST 安全规则包。"""
 
     return (ASTSecurityRule(),)

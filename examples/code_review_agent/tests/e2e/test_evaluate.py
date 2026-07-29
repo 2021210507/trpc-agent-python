@@ -46,7 +46,7 @@ def evaluation_summary(tmp_path_factory: pytest.TempPathFactory) -> dict[str, ob
         capture_output=True,
         encoding="utf-8",
         text=True,
-        timeout=120,
+        timeout=600,
     )
     assert completed.returncode == 0, completed.stderr
     summary_path = output_dir / "eval_summary.json"
@@ -68,14 +68,20 @@ def test_evaluate_metrics_meet_public_proxy_gates(evaluation_summary: dict[str, 
     assert set(("precision", "recall", "f1")) <= set(metrics)
 
 
-def test_evaluate_redact_and_duration_gates(evaluation_summary: dict[str, object]) -> None:
-    """验证密钥检测率、所有评测出口脱敏结果与统一墙钟预算。"""
+def test_evaluate_redact_and_per_fixture_duration_gates(evaluation_summary: dict[str, object]) -> None:
+    """验证密钥检测率与八条独立 Agent 审查均在单任务墙钟预算内完成。"""
 
     metrics = evaluation_summary["metrics"]
     assert isinstance(metrics, dict)
     assert metrics["redaction_detection_rate"] >= 0.95
     assert metrics["plaintext_hits"] == 0
-    assert evaluation_summary["duration_ms"] <= 120_000
+    fixture_runs = evaluation_summary["fixture_runs"]
+    assert isinstance(fixture_runs, list)
+    assert len(fixture_runs) == 8
+    assert {run["fixture"] for run in fixture_runs} == set(evaluate.FIXTURE_NAMES)
+    assert all(run["entrypoint"] == "agent" for run in fixture_runs)
+    assert all(run["skill_tools"] == ["skill_load", "skill_run"] for run in fixture_runs)
+    assert all(0 < run["duration_ms"] <= 120_000 for run in fixture_runs)
 
 
 def test_evaluate_summary_and_optional_history(tmp_path: Path) -> None:
@@ -99,7 +105,7 @@ def test_evaluate_summary_and_optional_history(tmp_path: Path) -> None:
         capture_output=True,
         encoding="utf-8",
         text=True,
-        timeout=120,
+        timeout=600,
     )
     assert completed.returncode == 0, completed.stderr
     summary = json.loads((output_dir / "eval_summary.json").read_text(encoding="utf-8"))
@@ -138,6 +144,93 @@ def test_evaluate_subprocess_environment_is_allowlisted(monkeypatch: pytest.Monk
     assert environment["PYTHONUTF8"] == "1"
 
 
+def test_evaluate_configures_safe_sdk_logging(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """验证评测入口复用安全日志策略，避免 SDK 运行时诊断泄露临时工作区路径。"""
+
+    configured_levels: list[str] = []
+
+    def configure_logging(level: str) -> None:
+        """记录评测入口请求的项目日志级别，不向测试输出真实日志。"""
+
+        configured_levels.append(level)
+
+    monkeypatch.setattr(evaluate, "configure_safe_logging", configure_logging)
+    fixture_runs = [
+        {
+            "fixture": name,
+            "entrypoint": "agent",
+            "skill_tools": ["skill_load", "skill_run"],
+            "status": "completed",
+            "duration_ms": 100,
+            "reports_verified": True,
+            "database_verified": True,
+        }
+        for name in evaluate.FIXTURE_NAMES
+    ]
+    monkeypatch.setattr(evaluate, "_run_fixture_suite", lambda *_arguments: (fixture_runs, 0))
+    monkeypatch.setattr(
+        evaluate,
+        "_evaluate_corpus",
+        lambda *_arguments: {
+            "corpus": {"positive_cases": 20, "clean_negative_cases": 10, "secret_cases": 48},
+            "metrics": {
+                "high_risk_recall": 1.0,
+                "finding_false_positive_share": 0.0,
+                "redaction_detection_rate": 1.0,
+                "plaintext_hits": 0,
+                "benign_secret_false_positives": 0,
+            },
+        },
+    )
+    monkeypatch.setattr(evaluate, "_observe_blind_spots", lambda *_arguments: (4, 0))
+
+    exit_code = evaluate.main(["--sandbox", "local", "--output-dir", str(tmp_path / "evaluation")])
+
+    assert exit_code == 0
+    assert configured_levels == ["WARNING"]
+
+
+def test_evaluate_fixture_suite_runs_each_fixture_as_an_independent_agent_task(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证八条 fixture 各自调用 Agent，保留独立任务的工具序列与单条耗时证据。"""
+
+    reviewed_fixtures: list[str] = []
+
+    def run_fixture_agent(
+        _work_root: Path,
+        fixture_name: str,
+        _sandbox: str,
+    ) -> tuple[dict[str, object], int]:
+        """模拟一个已验证的 Agent 任务结果，避免测试依赖真实子进程时延。"""
+
+        reviewed_fixtures.append(fixture_name)
+        return (
+            {
+                "fixture": fixture_name,
+                "entrypoint": "agent",
+                "skill_tools": ["skill_load", "skill_run"],
+                "status": "completed",
+                "duration_ms": 125,
+                "reports_verified": True,
+                "database_verified": True,
+            },
+            0,
+        )
+
+    monkeypatch.setattr(evaluate, "_run_fixture_agent", run_fixture_agent)
+
+    fixture_runs, plaintext_hits = evaluate._run_fixture_suite(tmp_path, "local")
+
+    assert reviewed_fixtures == list(evaluate.FIXTURE_NAMES)
+    assert len(fixture_runs) == len(evaluate.FIXTURE_NAMES)
+    assert all(run["entrypoint"] == "agent" for run in fixture_runs)
+    assert all(run["skill_tools"] == ["skill_load", "skill_run"] for run in fixture_runs)
+    assert all(0 < run["duration_ms"] <= evaluate.HARD_LIMIT_MS for run in fixture_runs)
+    assert plaintext_hits == 0
+
+
 def test_evaluate_history_rejects_business_review_schema(tmp_path: Path) -> None:
     """验证评测历史库拒绝业务 review.db 名称和已有业务五表，避免污染审查数据。"""
 
@@ -161,7 +254,19 @@ def test_evaluate_returns_nonzero_when_a_hard_gate_fails(
 ) -> None:
     """验证任一公开代理硬门禁失败时入口返回非零，而不是仅在摘要中记录失败。"""
 
-    monkeypatch.setattr(evaluate, "_run_fixture_suite", lambda *_arguments: (8, 0))
+    fixture_runs = [
+        {
+            "fixture": name,
+            "entrypoint": "agent",
+            "skill_tools": ["skill_load", "skill_run"],
+            "status": "completed",
+            "duration_ms": 100,
+            "reports_verified": True,
+            "database_verified": True,
+        }
+        for name in evaluate.FIXTURE_NAMES
+    ]
+    monkeypatch.setattr(evaluate, "_run_fixture_suite", lambda *_arguments: (fixture_runs, 0))
     monkeypatch.setattr(
         evaluate,
         "_evaluate_corpus",

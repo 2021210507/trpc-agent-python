@@ -33,6 +33,8 @@ class SecretPatternSpec:
 
     @property
     def pattern(self) -> re.Pattern[str]:
+        """编译并返回该密钥类型对应的忽略大小写正则表达式。"""
+
         return re.compile(self.expression, re.IGNORECASE | re.MULTILINE)
 
 
@@ -140,7 +142,7 @@ _PLACEHOLDER_VALUES = {
 
 
 def shannon_entropy(value: str) -> float:
-    """Return the Shannon entropy (bits per character) of *value*."""
+    """计算给定文本的 Shannon 熵（每字符 bit 数）。"""
 
     if not value:
         return 0.0
@@ -170,6 +172,8 @@ def _is_placeholder(value: str) -> bool:
 
 
 def _high_entropy_matches(text: str) -> Iterable[SecretMatch]:
+    """从敏感赋值语境中提取满足高熵阈值的密钥候选。"""
+
     assignment = re.compile(
         r"\b(?:credential|value)\s*[=:]\s*(?P<value>'[^'\n]+'|\"[^\"\n]+\")",
         re.IGNORECASE | re.MULTILINE,
@@ -186,7 +190,7 @@ def _high_entropy_matches(text: str) -> Iterable[SecretMatch]:
 
 
 def detect_secrets(text: str) -> Tuple[SecretMatch, ...]:
-    """Find secrets without returning their raw values.
+    """检测敏感信息但不向调用方返回其原始值。
 
     The regular-expression specs also drive ``redact_text``.  Placeholder
     examples are filtered after a pattern matches so comments containing real
@@ -220,7 +224,7 @@ def detect_secrets(text: str) -> Tuple[SecretMatch, ...]:
 
 
 def redact_text(text: str) -> str:
-    """Replace every detected secret with a typed non-sensitive marker."""
+    """将每个检测到的敏感信息替换为带类型的非敏感标记。"""
 
     redacted = text
     for match in sorted(detect_secrets(text), key=lambda item: (item.start, item.end), reverse=True):
@@ -233,13 +237,13 @@ def redact_text(text: str) -> str:
 
 
 def contains_secret(text: str) -> bool:
-    """Return whether unredacted secret syntax remains in text."""
+    """返回文本中是否仍存在未脱敏的敏感信息语法。"""
 
     return bool(detect_secrets(text))
 
 
 def detect_change_set_secrets(change_set: ChangeSet) -> Tuple[SecretLocation, ...]:
-    """Scan new content and deleted old content with their real coordinates."""
+    """扫描新增内容和删除旧侧内容，并保留其真实坐标。"""
 
     locations = []
     for file_change in change_set.files:

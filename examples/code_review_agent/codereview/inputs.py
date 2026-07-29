@@ -63,6 +63,8 @@ class FixturePayload:
     file_contents: Mapping[str, str] | None = None
 
     def __post_init__(self) -> None:
+        """校验 fixture 仅携带声明类型对应的一种原始输入载荷。"""
+
         if self.payload_type == "diff" and self.diff_text is not None and self.file_contents is None:
             return
         if self.payload_type == "files" and self.file_contents is not None and self.diff_text is None:
@@ -82,7 +84,7 @@ FixtureResolver = Callable[[str], FixturePayload]
 
 
 def _diff_parser():
-    """Import the Skill-owned parsing implementation without duplicating it."""
+    """导入 Skill 自有的 diff 解析实现，避免宿主复制规则逻辑。"""
 
     import sys
 
@@ -95,7 +97,7 @@ def _diff_parser():
 
 
 def _is_link_or_junction(path: Path) -> bool:
-    """Detect POSIX symlinks and Windows reparse points before reading them."""
+    """在读取前识别 POSIX 符号链接和 Windows 重解析点。"""
 
     try:
         status = path.lstat()
@@ -105,6 +107,8 @@ def _is_link_or_junction(path: Path) -> bool:
 
 
 def _resolved_root(input_root: Path | None) -> Path:
+    """解析并校验输入根目录，拒绝链接和不可访问目录。"""
+
     root = Path.cwd() if input_root is None else Path(input_root)
     if _is_link_or_junction(root):
         raise InputValidationError("input_root_link_rejected")
@@ -118,7 +122,7 @@ def _resolved_root(input_root: Path | None) -> Path:
 
 
 def _safe_named_path(path: Path, root: Path, *, allow_absolute: bool = False) -> Path:
-    """Validate one explicit input file before its metadata or bytes are read."""
+    """在读取元数据或内容前校验一个显式输入文件不会逃逸根目录。"""
 
     candidate = Path(path)
     if candidate.is_absolute() and not allow_absolute:
@@ -150,6 +154,8 @@ def _safe_named_path(path: Path, root: Path, *, allow_absolute: bool = False) ->
 
 
 def _read_utf8(path: Path) -> str:
+    """读取已校验的 UTF-8 文本，并将底层错误转为脱敏输入错误。"""
+
     try:
         return path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
@@ -159,7 +165,7 @@ def _read_utf8(path: Path) -> str:
 
 
 def _read_bytes(path: Path) -> bytes:
-    """Read validated input bytes without exposing a host-path exception."""
+    """读取已校验输入的字节，且不暴露宿主路径异常详情。"""
 
     try:
         return path.read_bytes()
@@ -168,7 +174,7 @@ def _read_bytes(path: Path) -> bytes:
 
 
 def _check_file_limits(paths: Sequence[Path], config: ReviewConfig, *, initial_bytes: int = 0) -> None:
-    """Enforce count and byte budgets before any file content is read."""
+    """在读取文件内容前执行文件数量和字节数预算检查。"""
 
     if len(paths) > config.max_input_files:
         raise InputLimitError("input_file_count_exceeded")
@@ -186,6 +192,8 @@ def _check_file_limits(paths: Sequence[Path], config: ReviewConfig, *, initial_b
 
 
 def _check_diff_limits(diff_text: str, config: ReviewConfig) -> None:
+    """检查统一 diff 文本的单文件、总字节和总行数限制。"""
+
     encoded = diff_text.encode("utf-8")
     if len(encoded) > config.max_input_file_bytes:
         raise InputLimitError("input_file_too_large")
@@ -196,6 +204,8 @@ def _check_diff_limits(diff_text: str, config: ReviewConfig) -> None:
 
 
 def _load_diff_file(diff_file: Path, input_root: Path | None, config: ReviewConfig) -> InputResult:
+    """加载并解析受控根目录内的统一 diff 文件输入。"""
+
     root = _resolved_root(input_root)
     path = _safe_named_path(diff_file, root, allow_absolute=True)
     _check_file_limits((path,), config)
@@ -206,6 +216,8 @@ def _load_diff_file(diff_file: Path, input_root: Path | None, config: ReviewConf
 
 
 def _load_files(files: Sequence[Path], input_root: Path | None, config: ReviewConfig) -> InputResult:
+    """加载显式文件快照，并构造全文件审查范围的 ChangeSet。"""
+
     root = _resolved_root(input_root)
     paths = tuple(_safe_named_path(Path(path), root) for path in files)
     if len({path.as_posix() for path in paths}) != len(paths):
@@ -232,7 +244,7 @@ def _load_files(files: Sequence[Path], input_root: Path | None, config: ReviewCo
 
 
 def _run_git(repo: Path, *arguments: str) -> str:
-    """Run Git with an argv list and return text without surfacing raw stderr."""
+    """以 argv 形式执行 Git，并将原始 stderr 隐藏在受控错误之后。"""
 
     try:
         completed = subprocess.run(
@@ -250,6 +262,8 @@ def _run_git(repo: Path, *arguments: str) -> str:
 
 
 def _repository_root(repo_path: Path) -> Path:
+    """解析真实 Git 工作区根目录，并拒绝链接和非仓库路径。"""
+
     candidate = Path(repo_path)
     if _is_link_or_junction(candidate):
         raise InputValidationError("repo_link_rejected")
@@ -269,6 +283,8 @@ def _repository_root(repo_path: Path) -> Path:
 
 
 def _repo_file_path(repo: Path, normalized_path: str) -> Path | None:
+    """返回仍位于工作区内且不是链接的已跟踪或未跟踪文件路径。"""
+
     relative = Path(normalized_path)
     if relative.is_absolute() or ".." in relative.parts:
         return None
@@ -284,11 +300,15 @@ def _repo_file_path(repo: Path, normalized_path: str) -> Path | None:
 
 
 def _is_ignored_repo_path(relative_path: str) -> bool:
+    """判断相对路径是否位于评审时必须忽略的构建或环境目录。"""
+
     path = Path(relative_path)
     return any(part in _IGNORED_REPO_PARTS or part.endswith(".egg-info") for part in path.parts)
 
 
 def _repo_digest(diff_text: str, untracked_contents: Mapping[str, str]) -> str:
+    """计算工作区 diff 与未跟踪文本快照的稳定输入摘要。"""
+
     hasher = hashlib.sha256(b"code-review-repo-v1\0")
     diff_bytes = diff_text.encode("utf-8")
     hasher.update(len(diff_bytes).to_bytes(8, "big"))
@@ -304,6 +324,8 @@ def _repo_digest(diff_text: str, untracked_contents: Mapping[str, str]) -> str:
 
 
 def _load_repository(repo_path: Path, config: ReviewConfig) -> InputResult:
+    """加载单次 Git diff 与受限未跟踪文本，构成工作区增量输入。"""
+
     repo = _repository_root(repo_path)
     diff_text = _run_git(repo, "diff", "HEAD")
     _check_diff_limits(diff_text, config)
@@ -389,6 +411,8 @@ def _load_repository(repo_path: Path, config: ReviewConfig) -> InputResult:
 
 
 def _load_fixture(payload: FixturePayload, config: ReviewConfig) -> InputResult:
+    """依据 fixture 声明的 diff 或文件载荷类型构造审查输入。"""
+
     build_snapshot_change_set, parse_unified_diff = _diff_parser()
     if payload.payload_type == "diff":
         assert payload.diff_text is not None
@@ -415,7 +439,7 @@ def load_input(
     input_root: Path | None = None,
     config: ReviewConfig | None = None,
 ) -> InputResult:
-    """Load exactly one supported review input through the secure staging boundary."""
+    """加载唯一允许的评审输入形式，并始终避免记录原始内容。"""
 
     active_config = ReviewConfig() if config is None else config
     file_list = tuple(files or ())

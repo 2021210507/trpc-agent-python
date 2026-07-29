@@ -5,7 +5,7 @@
     {
       "script_id": "parse_diff",
       "entrypoint": "parse_diff.py",
-      "sha256": "f886459e4ac4ddf866a57ca0ff955e4229b82e9141ed546e6b1b7e545e6e5fd2",
+      "sha256": "92df80e4b55a71aad0f7c732b0c7c28134375c579d6cf0fce3e0bf35ae944c03",
       "arguments": {
         "type": "object",
         "additional_properties": false,
@@ -18,7 +18,7 @@
     {
       "script_id": "run_checks",
       "entrypoint": "run_checks.py",
-      "sha256": "b4cfe1035a6a33d8deeefbc30828a2aafa8882ab981a3ea156a77e42e86595f5",
+      "sha256": "6c7996e7c3df4ec5a70036e23eed8cc1a017e7e96ce1e86f3748a83993053936",
       "arguments": {
         "type": "object",
         "additional_properties": false,

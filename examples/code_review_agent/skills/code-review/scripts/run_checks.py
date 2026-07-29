@@ -31,7 +31,7 @@ _OUTPUT_PATH = Path("out") / "findings.json"
 
 
 def _rule_engine() -> RuleEngine:
-    """Build the one deterministic rule pack owned by the Skill."""
+    """构造由当前 Skill 独占的唯一确定性规则包。"""
 
     return RuleEngine(
         (
@@ -46,7 +46,7 @@ def _rule_engine() -> RuleEngine:
 
 
 def _finding(match: RuleMatch) -> Dict[str, Any]:
-    """Convert a rule result to the portable finding contract with redaction."""
+    """将规则结果转换为已脱敏的可移植 finding 契约。"""
 
     return {
         "severity": match.severity,
@@ -64,13 +64,13 @@ def _finding(match: RuleMatch) -> Dict[str, Any]:
 
 
 def _findings(change_set: ChangeSet) -> Tuple[Dict[str, Any], ...]:
-    """Run all registered rules and preserve deterministic match ordering."""
+    """运行全部注册规则，并保留确定性的匹配排序。"""
 
     return tuple(_finding(match) for match in _rule_engine().match(change_set))
 
 
 def main() -> int:
-    """Read the fixed input and write only redacted structured findings."""
+    """读取固定输入，只写出已脱敏的结构化 finding。"""
 
     change_set = _load_change_set(_INPUT_PATH)
     findings = _findings(change_set)

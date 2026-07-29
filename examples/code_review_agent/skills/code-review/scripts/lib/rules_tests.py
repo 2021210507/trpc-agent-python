@@ -18,6 +18,8 @@ from .rule_engine import ReviewRule, RuleMatch
 
 
 def _is_test_path(path: str) -> bool:
+    """依据约定目录和文件名判断路径是否为 Python 测试文件。"""
+
     normalized = path.replace("\\", "/").lower()
     file_name = normalized.rsplit("/", 1)[-1]
     return "/tests/" in f"/{normalized}" or file_name.startswith("test_") or file_name.endswith("_test.py")
@@ -34,6 +36,8 @@ class MissingTestsRule:
     requires_full_file: bool = False
 
     def match(self, change_set: ChangeSet) -> Tuple[RuleMatch, ...]:
+        """在生产代码变更没有同次测试变更时生成低置信度候选项。"""
+
         changed_tests = any(
             file_change.normalized_path.endswith(".py")
             and _is_test_path(file_change.normalized_path)
@@ -73,6 +77,6 @@ class MissingTestsRule:
 
 
 def default_test_rules() -> Tuple[ReviewRule, ...]:
-    """Return the A6 change-set-level test-coverage heuristic."""
+    """返回基于变更集的测试缺失启发式规则。"""
 
     return (MissingTestsRule(),)

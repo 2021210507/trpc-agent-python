@@ -23,7 +23,7 @@ from trpc_agent_sdk.storage._sql_common import (
 
 
 def _utc_now() -> datetime:
-    """Return an aware UTC timestamp for portable timestamp columns."""
+    """返回供可移植时间戳列使用的带时区 UTC 当前时间。"""
 
     return datetime.now(timezone.utc)
 

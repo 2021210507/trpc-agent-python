@@ -74,6 +74,8 @@ class ChangeSet:
 
 
 def _normalize_path(path: str, *, strip_diff_prefix: bool = False) -> str:
+    """规范化 Git 路径并拒绝跨出受控工作区的组成部分。"""
+
     normalized = path.strip().replace("\\", "/")
     if normalized in {"/dev/null", "dev/null"}:
         return "/dev/null"
@@ -85,6 +87,8 @@ def _normalize_path(path: str, *, strip_diff_prefix: bool = False) -> str:
 
 
 def _decode_git_path(path: str) -> str:
+    """解码 Git 头中可能带引号转义的单个路径标记。"""
+
     path = path.strip()
     if len(path) >= 2 and path[0] == path[-1] == '"':
         try:
@@ -99,6 +103,8 @@ def _decode_git_path(path: str) -> str:
 
 
 def _parse_git_header(line: str) -> Tuple[str, str]:
+    """解析 ``diff --git`` 文件头并返回旧、新侧路径。"""
+
     path_tokens = _GIT_PATH_TOKEN.findall(line[len("diff --git "):])
     if len(path_tokens) != 2:
         raise ValueError("invalid git diff file header")
@@ -109,6 +115,8 @@ def _parse_git_header(line: str) -> Tuple[str, str]:
 
 
 def _parse_file_marker(line: str) -> str:
+    """解析 ``---`` 或 ``+++`` 标记中的规范化文件路径。"""
+
     marker_value = line[4:].split("\t", 1)[0]
     return _normalize_path(
         _decode_git_path(marker_value),
@@ -117,6 +125,8 @@ def _parse_file_marker(line: str) -> str:
 
 
 def _parse_hunk(lines: List[str], start: int) -> Tuple[Hunk, int, bool]:
+    """从给定索引解析一个 unified diff hunk 及其结束位置。"""
+
     match = _HUNK_HEADER.match(lines[start])
     if match is None:
         raise ValueError("invalid unified diff hunk header")
@@ -202,6 +212,8 @@ def _reconstruct_added_file(
     *,
     final_line_missing_newline: bool,
 ) -> str | None:
+    """在新增文件所有内容可见时重建完整文本供 AST 使用。"""
+
     if not hunks:
         return ""
 
@@ -232,7 +244,7 @@ def _reconstruct_added_file(
 
 
 def _analysis_mode(path: str, full_text: str | None) -> Tuple[str, str | None]:
-    """Return the safe analysis mode and an optional sanitized parse warning."""
+    """返回安全的分析模式及可选的脱敏解析告警。"""
 
     if full_text is None or not path.endswith(".py"):
         return "diff_heuristic", None
@@ -249,6 +261,8 @@ def build_snapshot_change_set(
     *,
     source_kind: str = "files",
 ) -> ChangeSet:
+    """将显式文件快照构造成全文件范围的 ChangeSet。"""
+
     """Build a full-file ChangeSet from explicitly supplied text snapshots."""
 
     if source_kind not in {"files", "fixture"}:
@@ -333,6 +347,8 @@ def parse_unified_diff(
     *,
     source_kind: str = "diff_file",
 ) -> ChangeSet:
+    """解析统一 diff，保留新旧侧行号、范围和安全解析摘要。"""
+
     """Parse unified diff text into the shared review domain model."""
 
     if source_kind not in {"diff_file", "repo_path", "fixture"}:
