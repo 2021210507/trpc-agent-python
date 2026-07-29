@@ -1,9 +1,9 @@
 # Automatic Code Review Agent — 维护与 PR 验收手册
 
-本手册面向合并 PR 前的维护者。完整字段契约、预算与验收标准以仓库根目录
-[`DEV_SPEC.md`](DEV_SPEC.md) 为准；本文件同时提供 Windows PowerShell 与 Linux/macOS Bash
-命令。所有命令从仓库根目录执行。PowerShell 只复制代码块中的命令，不要复制终端提示符
-`PS ...>` 或续行提示符 `>>`。
+[`README.md`](README.md) 是项目主入口，包含能力说明、官方验收标准、快速开始和实测基准；本文件是面向
+合并 PR 前维护者的**详细维护与 PR 验收补充**。完整字段契约、预算与验收标准以同目录
+[`DEV_SPEC.md`](DEV_SPEC.md) 为准。本文件同时提供 Windows PowerShell 与 Linux/macOS Bash 命令，
+所有命令从仓库根目录执行。PowerShell 只复制代码块中的命令，不要复制终端提示符 `PS ...>` 或续行提示符 `>>`。
 
 ## 0. 前置检查与配置
 
@@ -323,7 +323,7 @@ review_fixture 08_secret_redaction_simple
 review_fixture 08_secret_redaction_complex
 
 # 任选一个 fixture 验证 SDK Agent + SkillToolSet 入口。
-review_fixture 02_security_simple agent
+"$py" examples/skills_code_review_agent/run_agent.py user-query "Review this security fixture" --fixture 02_security_simple --sandbox local --dry-run --output-dir out/agent_fixture --db-url sqlite+pysqlite:///out/agent_fixture/review.db
 ```
 
 ## 4. 模型和沙箱组合

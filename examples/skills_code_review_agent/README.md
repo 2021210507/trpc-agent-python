@@ -67,7 +67,23 @@ CLI user-query ───────→ SDK LlmAgent + SkillToolSet      │
 - [`tests/fixtures/diffs/`](tests/fixtures/diffs/) 与
   [`tests/e2e/test_fixtures_e2e.py`](tests/e2e/test_fixtures_e2e.py)：8 simple + 8 complex 公开样例和 E2E 合同。
 
-## 环境与运行
+## 验收标准与当前证据
+
+下表保留 issue #92 的官方验收口径，并区分“仓库内可复现证据”和“只能由官方隐藏样本判定的结果”。
+公开 fixture、代理语料和实测数据不能替代官方隐藏样本验收。
+
+| AC | 官方验收标准 | 当前项目证据 | 状态 |
+|---|---|---|---|
+| AC1 | 8 条公开 diff 样本必须全部可运行并生成审查报告。 | 8 个 `_simple` fixture 逐条验证 JSON、Markdown 和 SQLite；另提供 8 个 `_complex` 工程样例。 | 已提供公开证据 |
+| AC2 | 隐藏样本上高危问题检出率 ≥ 80%，误报率 ≤ 15%。 | `evaluate.py` 在带标注的公开代理语料上计算 Recall、Precision、F1 和 finding 级误报占比。 | **官方隐藏样本待官方验收** |
+| AC3 | 数据库完整记录 task、sandbox run、finding 和 report，并支持按 task id 查询。 | 默认 SQLite 五表还记录 Filter event；CLI 提供 `show`、`list` 和 `init-db`。 | 已提供公开证据 |
+| AC4 | 沙箱执行具备超时和输出大小限制；超时或失败不能导致整个评审任务崩溃。 | timeout、非零退出和截断均作为 sandbox run 与 warning 持久化；能生成报告时返回 `completed_with_warnings`。 | 已提供公开证据 |
+| AC5 | 敏感信息脱敏检出率 ≥ 95%，报告和数据库中不能出现明文 API Key、token、password。 | 合成凭据代理语料、检/脱同源规则和三层出口扫描共同验证 `plaintext_hits=0`。 | 已提供公开代理证据 |
+| AC6 | dry-run / fake model 模式下完整评审流程耗时 ≤ 2 分钟。 | 8 个 simple fixture 分别通过独立 fake + local Agent 进程运行，每条均低于 120 秒；聚合耗时只作观测。 | 已提供实测证据 |
+| AC7 | 高风险脚本必须先经过 Filter；deny / needs_human_review 不能直接进入沙箱执行。 | Filter 前置短路测试断言 sandbox run 数为 0，并持久化脱敏决策原因。 | 已提供公开证据 |
+| AC8 | 报告包含 findings 摘要、严重级别统计、人工复核项、Filter 拦截摘要、监控指标、沙箱执行摘要和可执行修复建议。 | canonical JSON schema、确定性 Markdown 和 sample output 覆盖全部报告分区。 | 已提供公开证据 |
+
+## 环境与快速开始
 
 ### 环境要求
 
@@ -147,13 +163,37 @@ py=".venv/bin/python"
 
 `user-query` 的自然语言只表达审查意图；`--diff-file`、`--repo-path`、`--files` 或 `--fixture` 必须显式选择一个。
 格式错误的 diff、路径逃逸、非 UTF-8 文件和疑似凭据 query 会在创建 Agent 前拒绝。
-完整的四输入模式、16 fixture、off/fake/real、local/container/Cube 和双平台命令见
-[`OPERATIONS.md`](OPERATIONS.md)。
 
 需要在终端观察受控 Agent 流程时，增加 `--trace`。trace 以 JSON Lines 写入 **stderr**，stdout 仍只输出
 最终 JSON，因此 CI 可以继续直接解析 stdout。它显示 query 解析、SDK `skill_load` / `skill_run` 事件、
 Filter、sandbox、Pipeline 和报告落库；不显示模型私有推理、原始 query/diff、代码/evidence、request id、
 命令、环境变量或临时路径。
+
+## 四种输入与运行模式
+
+四种输入互斥，同一次评审只能选择一项。自然语言 `user-query` 只表达意图，文件和目录始终通过结构化参数传入。
+
+| 输入 | 参数示例 | 审查语义 |
+|---|---|---|
+| unified diff / PR patch | `--diff-file changes.diff` | changed-lines 增量审查 |
+| Git 工作区 | `--repo-path .` | `git diff HEAD` 加未跟踪文本文件 |
+| 指定文件 | `--files src/a.py src/b.py --input-root .` | full-file snapshot 扫描 |
+| 内置样例 | `--fixture 02_security_simple` | 使用 fixture 声明的 diff 或 full-file 载荷 |
+
+| 模型模式 | 行为 |
+|---|---|
+| `--model-mode off` | 不做 LLM 文本增强，规则、Filter、sandbox 和落库仍完整执行 |
+| `--model-mode fake` / `--dry-run` | 使用离线 fake 模型；`--dry-run` 不会自动切换 local sandbox |
+| `--model-mode real` | 显式读取三项模型配置，只增强摘要、建议和复核提示，不改变 finding |
+
+| 沙箱模式 | 行为 |
+|---|---|
+| `--sandbox container` | 生产严格默认，要求 Docker，执行时验证 `network_mode=none` |
+| `--sandbox local` | 显式开发 fallback，不需要 Docker，并在报告中生成隔离能力 warning |
+| `--sandbox cube` | 当前缺少机器可验证的无出口网络证明，Filter 拒绝是预期安全结果 |
+
+完整的 Windows/Linux 命令、16 个 fixture、模型/沙箱组合和拒绝场景见
+[`OPERATIONS.md`](OPERATIONS.md)。
 
 ## 运行结果与报告定位
 
@@ -181,7 +221,7 @@ JSON 是规范源；Markdown 只能从已校验 JSON 渲染。可查看
 样例由 `user-query` 的 fake model + 显式 local sandbox 生成，报告中 `metrics.tool_call_count=2`，可直接佐证
 `skill_load → skill_run` 的 Agent/Skill 链路；其中的 local 告警是该开发 fallback 的预期安全语义。
 
-## 验证与验收
+## 最小验证命令
 
 常规回归、公开代理评测和静态规范检查：
 
@@ -195,18 +235,7 @@ JSON 是规范源；Markdown 只能从已校验 JSON 渲染。可查看
 但**不证明**官方隐藏样本的检出率或误报率。Container 与 real 模型测试分别标记为 `container`、
 `real_llm`，只在已具备 Docker 或真实模型配置时运行。
 
-| 验收项 | 当前可验证证据 |
-|---|---|
-| AC1 | 8 个 simple fixture 和 8 个 complex 配对样例逐条生成 JSON、Markdown 与 SQLite bundle。 |
-| AC2 | `evaluate.py` 计算公开代理语料的高危 Recall 与 finding 级 FP；**官方隐藏样本待官方验收**。 |
-| AC3 | SQLite 五表保存 task、run、Filter event、finding 与 report，并按 task id 查询。 |
-| AC4 | manifest、Filter 与 sandbox 将 timeout、截断、预算和非零退出记录为数据，不中断报告。 |
-| AC5 | 同源 detect/redact 与全出口扫描阻止明文凭据持久化。 |
-| AC6 | 8 条 public fixture 均以 fake + local 的独立 Agent 审查运行；每条限制为 120 秒，聚合评测耗时仅记录。 |
-| AC7 | DENY / NEEDS_HUMAN_REVIEW 在 sandbox 前短路并记录原因。 |
-| AC8 | canonical JSON/Markdown 包含 findings、人工复核、治理、运行、监控和修复建议。 |
-
-### 2026-07-28 独立 Agent 实测基准
+## 2026-07-28 独立 Agent 实测基准
 
 以下数据用于维护者复现实测，不是跨机器、跨网络或跨模型服务的性能承诺。每一个单元格都是一个**独立的**
 `user-query` 进程：显式 `--sandbox local`，使用独立输出目录和 SQLite；成功项均已验证
@@ -251,8 +280,13 @@ complex dry-run 最大值为 **28.814 s**，8/8 完成。首次 complex real 观
 完成，complex real 当前为 8/8，范围 46.149–60.422 s。它仍是当前真实模型服务条件下的诊断记录，**不**可
 替代、也不影响 AC6 的 simple fake/local 门禁。复现命令与输出定位方式见 [`OPERATIONS.md`](OPERATIONS.md)。
 
-架构取舍、安全边界、风险和逐项 AC 核对见 [`DESIGN.md`](DESIGN.md)。维护者的完整 PR 验收步骤、
-16 个 fixture、Docker/real model 实测和故障排查见 [`OPERATIONS.md`](OPERATIONS.md)。
+## 文档导航
+
+- [`README.md`](README.md)：项目主入口，说明能力、交付物、官方验收标准、快速开始、运行模式和实测基准。
+- [`OPERATIONS.md`](OPERATIONS.md)：维护者的详细 PR 验收、16 个 fixture、双平台完整命令、数据库查询、
+  Docker/real model 验证、日志诊断和故障排查。
+- [`DESIGN.md`](DESIGN.md)：架构取舍、安全边界、数据库 schema、去重降噪、监控字段和风险。
+- [`DEV_SPEC.md`](DEV_SPEC.md)：字段契约、锁定预算、排期和 AC1–AC8 的唯一规范源。
 
 ## 适用场景建议
 

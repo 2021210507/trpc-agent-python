@@ -112,3 +112,39 @@ def test_release_docs_local_links_resolve() -> None:
 
     assert local_targets
     assert all(target.exists() for target in local_targets)
+
+
+def test_readme_is_primary_and_operations_is_a_detailed_supplement() -> None:
+    """验证 README 完整呈现验收入口，同时将命令矩阵和排障细节委托给维护手册。"""
+
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    operations = (PROJECT_ROOT / "OPERATIONS.md").read_text(encoding="utf-8")
+
+    required_readme_sections = (
+        "## 验收标准与当前证据",
+        "## 环境与快速开始",
+        "## 四种输入与运行模式",
+        "## 运行结果与报告定位",
+        "## 最小验证命令",
+        "## 2026-07-28 独立 Agent 实测基准",
+        "## 文档导航",
+        "## 适用场景建议",
+    )
+    required_acceptance_rows = (
+        "| AC1 | 8 条公开 diff",
+        "| AC2 | 隐藏样本上高危问题检出率 ≥ 80%，误报率 ≤ 15%",
+        "| AC3 | 数据库完整记录 task、sandbox run、finding 和 report",
+        "| AC4 | 沙箱执行具备超时和输出大小限制",
+        "| AC5 | 敏感信息脱敏检出率 ≥ 95%",
+        "| AC6 | dry-run / fake model 模式下完整评审流程耗时 ≤ 2 分钟",
+        "| AC7 | 高风险脚本必须先经过 Filter；deny / needs_human_review",
+        "| AC8 | 报告包含 findings 摘要、严重级别统计、人工复核项",
+    )
+
+    assert all(section in readme for section in required_readme_sections)
+    assert all(row in readme for row in required_acceptance_rows)
+    assert "官方隐藏样本待官方验收" in readme
+    assert "[`README.md`](README.md)" in operations
+    assert "是项目主入口" in operations
+    assert "详细维护与 PR 验收补充" in operations
+    assert "review_fixture 02_security_simple agent" not in operations
